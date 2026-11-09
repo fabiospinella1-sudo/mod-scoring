@@ -1,7 +1,7 @@
 /* MOD Range Scoring — offline support.
    Serves the app from the phone's cache (works with no signal) and quietly
    refreshes the cache in the background whenever there is signal. */
-const CACHE = 'mod-scoring-v3';
+const CACHE = 'mod-scoring-v4';
 const FILES = ['./', 'index.html', 'qrcode.min.js', 'logo.png', 'manifest.webmanifest',
   'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png'];
 

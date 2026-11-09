@@ -221,7 +221,7 @@ body.kiosk .bar{display:none}
    Hit factor = (possible points − deductions) ÷ total time of all strings
    ===================================================================== */
 
-const VERSION = '1.2.0';
+const VERSION = '1.2.1';
 const LS = 'modScore.v1';
 const CWC = 'CWC Safety Team Qualifications';
 const BRG = 'BRG Standards';
@@ -589,17 +589,27 @@ let ns = null;
 function newSessionModal() {
   if (!ns) ns = { course: S.courses[0] && S.courses[0].name, date: today(), picked: {}, extra: [], older: false };
   const course = S.courses.find(c => c.name === ns.course) || S.courses[0];
-  const cutoff = Date.now() - 4 * 86400000;
+  // Who is this qualification for? Everyone who signed in for this class since the day of
+  // its previous qualification (or the last 14 days if there isn't one), minus anyone already
+  // scored in another group of this class on the same date.
+  const same = S.sessions.filter(s => s.course.name === course.name);
+  const prevDate = same.map(s => s.date).filter(d => d < ns.date).sort().pop();
+  const dayAfter = d => { const [y, m, dd] = d.split('-').map(Number); return new Date(y, m - 1, dd + 1).getTime(); };
+  const cutoff = prevDate ? dayAfter(prevDate) : Date.now() - 14 * 86400000;
+  const sameDay = new Set(same.filter(s => s.date === ns.date).flatMap(s => s.shooters.map(x => x.name.toLowerCase())));
   const list = S.roster.filter(r => !r.course || r.course === course.name);
-  const recent = list.filter(r => r.ts >= cutoff), older = list.filter(r => r.ts < cutoff);
+  const isNew = r => r.ts >= cutoff && !sameDay.has(r.name.toLowerCase());
+  const recent = list.filter(isNew), older = list.filter(r => !isNew(r));
   recent.forEach(r => { if (ns.picked[r.name] === undefined) ns.picked[r.name] = true; });
   const shown = ns.older ? recent.concat(older) : recent;
+  const rule = prevDate ? `Checked: signed in since the last one on ${prettyDate(prevDate)}` : 'Checked: signed in during the last 14 days';
   openModal(`<h2>New qualification</h2>
     <label class="f"><span>Course</span></label>
     ${S.courses.map(c => `<button class="courseOpt ${c.name === course.name ? 'on' : ''}" data-act="nsCourse" data-n="${esc(c.name)}"><b>${esc(c.name)}</b>
       <small class="num">${plural(c.strings.length, 'string')} · ${c.a * roundsIn(c, c.strings.map((_, j) => j))} pts · ${plural(stopsOf(c).length, 'scoring stop')} · pass ≥ ${c.passHF}</small></button>`).join('')}
     <label class="f"><span>Date</span><input type="date" class="in-t" id="nsDate" value="${ns.date}"></label>
     <div class="row" style="margin-top:16px"><b class="grow">Shooters</b><button class="linkbtn" data-act="loadRoster" data-again="ns">Refresh sign-ups</button></div>
+    <div class="small dim">${esc(rule)}</div>
     <div class="list" style="margin-top:6px">${shown.length ? shown.map(r => `<label class="check"><input type="checkbox" data-pick="${esc(r.name)}" ${ns.picked[r.name] ? 'checked' : ''}>
       <div class="grow"><b>${esc(r.name)}</b><div class="small muted">${esc(r.email || '')}${r.ts ? ' · signed in ' + ago(r.ts) : ''}</div></div></label>`).join('')
       : `<div class="empty small">No recent sign-ups for this course${S.settings.scriptUrl ? '' : ' (not connected to your Sheet)'}.</div>`}
@@ -823,7 +833,7 @@ document.addEventListener('change', e => {
   if (el.matches('[data-time]') && el.value) { const v = parseFloat(el.value); if (v > 0) el.value = v.toFixed(2); }
   if (el.matches('[data-set]')) { S.settings[el.dataset.set] = el.checked; save(); }
   if (el.id === 'formUrl') { S.settings.formUrl = el.value.trim(); save(); }
-  if (el.id === 'nsDate' && ns) ns.date = el.value;
+  if (el.id === 'nsDate' && ns && el.value) { ns.date = el.value; ns.picked = {}; newSessionModal(); }
   if (el.matches('[data-pick]') && ns) ns.picked[el.dataset.pick] = el.checked;
   if (el.matches('[data-addpick]')) addPicked[el.dataset.addpick] = el.checked;
   if (el.id === 'restoreFile' && el.files[0]) {
