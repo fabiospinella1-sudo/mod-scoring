@@ -1,0 +1,1140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MOD Range Scoring</title>
+<meta name="theme-color" content="#08122c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="MOD Scoring">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+<style>
+:root{
+  --bg:#08122c; --navy:#0d1b40; --card:#122450; --card2:#183066; --line:rgba(170,195,240,.16);
+  --ink:#ffffff; --muted:#a8b8da; --dim:#7487b3;
+  --red:#d4242f; --red2:#ff5a63; --blue:#6f93cf; --blue2:#9fc0f2; --warn:#f2b84b;
+  --r:16px; --safeb:env(safe-area-inset-bottom,0px); --safet:env(safe-area-inset-top,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+body{min-height:100vh;padding-bottom:calc(24px + var(--safeb))}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none}
+.num{font-variant-numeric:tabular-nums}
+.wrap{max-width:640px;margin:0 auto;padding:0 16px}
+
+/* header */
+.bar{position:sticky;top:0;z-index:20;background:rgba(8,18,44,.94);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line);padding-top:var(--safet)}
+.bar .in{max-width:640px;margin:0 auto;display:flex;align-items:center;gap:8px;min-height:58px;padding:6px 10px}
+.bar .ttl{flex:1;min-width:0}
+.bar .ttl b{display:block;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar .ttl small{display:block;color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.iconbtn{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;font-size:26px;color:var(--blue2);flex:none}
+.iconbtn:active{background:var(--card)}
+.iconbtn svg{width:24px;height:24px}
+
+/* hero */
+.hero{display:flex;align-items:center;gap:14px;padding:22px 0 8px}
+.hero img{width:76px;height:76px;flex:none;filter:drop-shadow(0 6px 18px rgba(0,0,0,.45))}
+.hero h1{margin:0;font-size:26px;letter-spacing:.2px}
+.hero p{margin:2px 0 0;color:var(--muted);font-size:14px;letter-spacing:2px;text-transform:uppercase}
+
+/* cards & buttons */
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px}
+.stack>*+*{margin-top:12px}
+.sect{margin:22px 0 8px;color:var(--muted);font-size:13px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;min-height:52px;padding:0 18px;border-radius:14px;font-weight:700;font-size:17px;background:var(--card2);border:1px solid var(--line);width:100%}
+.btn:active{transform:scale(.985)}
+.btn.primary{background:var(--red);border-color:transparent;box-shadow:0 8px 22px rgba(212,36,47,.32)}
+.btn.blue{background:var(--blue);color:#06122e;border-color:transparent}
+.btn.ghost{background:transparent}
+.btn svg{width:22px;height:22px;flex:none}
+.btn.sm{min-height:42px;font-size:15px;width:auto;padding:0 14px;border-radius:12px}
+.btn:disabled{opacity:.4}
+.row{display:flex;gap:10px;align-items:center}
+.row>.grow{flex:1;min-width:0}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.muted{color:var(--muted)} .dim{color:var(--dim)} .small{font-size:13px}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:800;letter-spacing:.6px}
+.pill.pass{background:var(--blue2);color:#06122e}
+.pill.fail{background:var(--red);color:#fff}
+.pill.wait{background:rgba(255,255,255,.08);color:var(--muted)}
+.pill.warn{background:rgba(242,184,75,.16);color:var(--warn)}
+.empty{text-align:center;color:var(--muted);padding:28px 10px}
+
+/* status strip */
+.status{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+.status .card{padding:12px}
+.status .k{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+.status .v{font-size:20px;font-weight:800;margin:2px 0 8px}
+
+/* lists */
+.list{background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.li{display:flex;align-items:center;gap:12px;padding:14px;min-height:64px;width:100%;text-align:left;border-bottom:1px solid var(--line)}
+.li:last-child{border-bottom:0}
+.li:active{background:var(--card2)}
+.li .main{flex:1;min-width:0}
+.li .main b{display:block;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.li .main small{display:block;color:var(--muted);font-size:13px}
+.li .side{text-align:right;flex:none}
+.li .side .hf{font-size:20px;font-weight:800}
+.chev{color:var(--dim);font-size:22px;flex:none}
+.av{width:38px;height:38px;border-radius:50%;background:var(--card2);display:grid;place-items:center;font-weight:800;color:var(--blue2);flex:none}
+
+/* tabs */
+.tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;background:var(--navy);border:1px solid var(--line);border-radius:14px;padding:4px;margin:14px 0}
+.tabs button{min-height:42px;border-radius:10px;font-weight:700;font-size:14px;color:var(--muted)}
+.tabs button.on{background:var(--card2);color:#fff;box-shadow:inset 0 -2px 0 var(--red)}
+
+/* scoring */
+.stopHead{display:flex;align-items:baseline;justify-content:space-between;margin:22px 0 8px}
+.stopHead b{font-size:13px;letter-spacing:1.4px;text-transform:uppercase;color:var(--blue2)}
+.str{display:flex;gap:12px;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line)}
+.str:last-child{border-bottom:0}
+.str .n{width:30px;height:30px;border-radius:9px;background:var(--navy);display:grid;place-items:center;font-weight:800;font-size:14px;flex:none;color:var(--blue2)}
+.str .d{flex:1;min-width:0;font-size:14px}
+.str .d small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+.tin{width:104px;height:50px;border-radius:12px;border:2px solid var(--line);background:var(--bg);text-align:right;padding:0 12px;font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;flex:none;outline:none}
+.tin:focus{border-color:var(--blue2);background:#0b1838}
+.tin.ok{border-color:rgba(159,192,242,.45)}
+.tin::placeholder{color:#34466f;font-weight:600}
+.score{border:2px dashed rgba(242,184,75,.55);background:linear-gradient(180deg,rgba(242,184,75,.06),transparent)}
+.score.done{border:2px solid rgba(159,192,242,.45);background:var(--card)}
+.score .top{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px}
+.score .top b{font-size:16px}
+.ctrs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.ctr{background:var(--navy);border:1px solid var(--line);border-radius:14px;padding:8px 6px;text-align:center}
+.ctr .lab{font-weight:800;font-size:15px}
+.ctr .lab span{color:var(--muted);font-weight:600;font-size:12px}
+.ctr .val{font-size:30px;font-weight:800;line-height:1.1;margin:2px 0 6px}
+.ctr .pm{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.ctr .pm button{height:46px;border-radius:10px;background:var(--card2);font-size:24px;font-weight:700}
+.ctr .pm button.plus{background:var(--blue);color:#06122e}
+.ctr.m .pm button.plus{background:var(--red);color:#fff}
+.ctr .pm button:disabled{opacity:.3}
+.ctr.c .lab{color:#ffd78a} .ctr.d .lab{color:#ffb27a} .ctr.m .lab{color:var(--red2)}
+.ctrs.pen{grid-template-columns:repeat(2,1fr);margin-top:8px}
+.linkbtn{color:var(--blue2);font-weight:700;font-size:14px;padding:8px 2px}
+
+/* sticky summary */
+.sum{position:fixed;left:0;right:0;bottom:0;z-index:15;background:rgba(13,27,64,.97);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid var(--line);padding:10px 12px calc(10px + var(--safeb))}
+.sum .in{max-width:640px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr 1.25fr;gap:8px;align-items:center}
+.sum .k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+.sum .v{font-size:19px;font-weight:800}
+.sum .hfv{font-size:27px;font-weight:900;line-height:1}
+.sum .navs{max-width:640px;margin:8px auto 0;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.has-sum{padding-bottom:180px}
+
+/* leaderboard */
+.lb .li{min-height:72px}
+.rank{width:34px;font-size:20px;font-weight:900;color:var(--blue2);text-align:center;flex:none}
+.lb .li:nth-child(1) .rank{color:#ffd166}
+.lb .hf{font-size:26px!important}
+
+/* line view */
+.chips{display:flex;gap:8px;overflow-x:auto;padding:2px 0 10px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;min-width:52px;height:44px;border-radius:12px;background:var(--card);border:1px solid var(--line);font-weight:800;padding:0 12px}
+.chip.on{background:var(--red);border-color:transparent}
+.chip.stop{box-shadow:inset 0 -3px 0 var(--warn)}
+.strCard{background:var(--card2);border-radius:var(--r);padding:14px;margin-bottom:12px}
+.strCard b{font-size:16px}
+
+/* forms */
+label.f{display:block;margin-top:12px}
+label.f>span{display:block;font-size:13px;color:var(--muted);margin-bottom:6px;font-weight:600}
+.in-t{width:100%;min-height:50px;border-radius:12px;border:1px solid var(--line);background:var(--bg);padding:10px 12px;font-size:17px;outline:none}
+.in-t:focus{border-color:var(--blue2)}
+textarea.in-t{min-height:70px;resize:vertical}
+.check{display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--line);min-height:56px}
+.check:last-child{border-bottom:0}
+.check input{width:24px;height:24px;accent-color:var(--red);flex:none}
+.toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0}
+.toggle input{width:52px;height:30px;accent-color:var(--blue)}
+.courseOpt{display:block;width:100%;text-align:left;padding:14px;border-radius:14px;border:2px solid var(--line);background:var(--card);margin-bottom:8px}
+.courseOpt.on{border-color:var(--red);background:var(--card2)}
+.courseOpt b{display:block;font-size:16px}
+.courseOpt small{color:var(--muted)}
+.edStr{background:var(--navy);border:1px solid var(--line);border-radius:14px;padding:10px;margin-top:10px}
+.edStr .row{margin-top:8px}
+
+/* modal */
+.modal{position:fixed;inset:0;z-index:50;background:rgba(2,6,18,.66);display:none;align-items:flex-end;justify-content:center}
+.modal.open{display:flex}
+.sheet{background:var(--navy);width:100%;max-width:640px;max-height:92vh;overflow:auto;border-radius:22px 22px 0 0;border:1px solid var(--line);padding:8px 16px calc(20px + var(--safeb));animation:up .2s ease-out}
+.sheet .grab{width:44px;height:5px;border-radius:3px;background:var(--line);margin:6px auto 10px}
+.sheet h2{margin:0 0 6px;font-size:21px}
+@keyframes up{from{transform:translateY(30px);opacity:.4}to{transform:none;opacity:1}}
+.qr{background:#fff;border-radius:18px;padding:16px;margin:12px auto;max-width:330px}
+.qr svg{display:block;width:100%;height:auto}
+
+.toast{position:fixed;left:50%;bottom:calc(24px + var(--safeb));transform:translateX(-50%) translateY(120px);background:#eef3ff;color:#06122e;font-weight:700;padding:12px 18px;border-radius:14px;z-index:60;transition:transform .25s;max-width:calc(100% - 32px);box-shadow:0 10px 30px rgba(0,0,0,.4)}
+.toast.show{transform:translateX(-50%) translateY(0)}
+.has-sum~.toast.show,.toast.high.show{transform:translateX(-50%) translateY(-150px)}
+.menu .btn{margin-top:8px;justify-content:flex-start}
+.danger{color:var(--red2)!important}
+/* shot timer */
+.tchip{display:flex;align-items:center;gap:6px;height:40px;padding:0 12px;border-radius:12px;background:var(--card);border:1px solid var(--line);font-weight:800;font-variant-numeric:tabular-nums;flex:none}
+.tchip .dot{width:9px;height:9px;border-radius:50%;background:var(--red2)}
+.tchip.on .dot{background:#5fe08f;box-shadow:0 0 0 3px rgba(95,224,143,.2)}
+.tchip svg{width:18px;height:18px}
+.tin.tgt{border-color:var(--warn)!important;box-shadow:0 0 0 3px rgba(242,184,75,.28)}
+.tin.live{color:var(--warn)}
+.aim{border:0;cursor:pointer}
+.tbig{font-size:64px;font-weight:900;text-align:center;line-height:1;margin:14px 0 4px;font-variant-numeric:tabular-nums}
+.shotw{display:inline-block;margin-top:4px}
+/* sign-in kiosk */
+body.kiosk .bar{display:none}
+.kio{max-width:560px;margin:0 auto;padding-top:calc(28px + var(--safet));text-align:center}
+.kio img{width:110px;height:110px;filter:drop-shadow(0 8px 22px rgba(0,0,0,.5))}
+.kio h1{font-size:30px;margin:14px 0 2px}
+.kio .sub{color:var(--muted);font-size:16px}
+.kio form{text-align:left;margin-top:22px}
+.kio .in-t{min-height:62px;font-size:21px;border-radius:14px;background:var(--card)}
+.kio label.f>span{font-size:15px}
+.kio .btn{min-height:64px;font-size:20px}
+.kio .ok{background:var(--card);border:2px solid var(--blue2);border-radius:22px;padding:30px 18px;margin-top:26px}
+.kio .ok .big{font-size:58px;line-height:1}
+.kio .ok b{display:block;font-size:26px;margin-top:10px}
+.kexit{margin-top:34px;color:var(--dim);font-size:13px;padding:12px 16px;border-radius:12px;border:1px dashed var(--line);user-select:none;-webkit-user-select:none;touch-action:none;position:relative;overflow:hidden}
+.kexit i{position:absolute;left:0;top:0;bottom:0;width:0;background:rgba(212,36,47,.35);transition:width 0s}
+.kexit.hold i{width:100%;transition:width 1.5s linear}
+.kexit span{position:relative}
+</style>
+</head>
+<body>
+<header class="bar"><div class="in" id="bar"></div></header>
+<main class="wrap" id="app"></main>
+<div class="sum" id="sum" hidden></div>
+<div class="modal" id="modal"><div class="sheet" id="sheet"></div></div>
+<div class="toast" id="toast"></div>
+<input type="file" id="restoreFile" accept="application/json,.json" hidden>
+<script src="qrcode.min.js"></script>
+<script>
+'use strict';
+/* =====================================================================
+   My Own Defender — Range Scoring
+   Hit factor = (possible points − deductions) ÷ total time of all strings
+   ===================================================================== */
+
+const VERSION = '1.2.0';
+const LS = 'modScore.v1';
+const CWC = 'CWC Safety Team Qualifications';
+const BRG = 'BRG Standards';
+const BASE = [
+  ['Draw & fire 1 round', '7', 1],
+  ['Draw & fire 1 round', '7', 1],
+  ['Draw & fire 2 rounds', '10', 2],
+  ['Draw & fire 2 rounds', '10', 2],
+  ['Draw & fire 6 rounds', '15', 6],
+  ['Draw & fire 2 to each of 2 bodies, move up to the 7 and fire 2 to each of 2 bodies, then fire 2 to each of 2 heads', '15 to 7', 12],
+  ['Draw and run from 25 yards to 10 yards & fire 4 to the body and 2 to the head', '25 to 10', 6],
+  ['Draw and fire 5 shots at 10 yards, retreat to the 25 and fire 5 shots', '10 to 25', 10],
+];
+const VALUES = { a: 5, c: 3, d: 1, m: 0, missPen: 0, nsPen: 10, procPen: 10 };
+const DEFAULT_COURSES = [
+  Object.assign({ name: CWC, passHF: 3.75, src: 'default' }, VALUES,
+    { strings: BASE.map((s, i) => ({ desc: s[0], dist: s[1], rounds: s[2], stop: i === 5 || i === 7 })) }),
+  Object.assign({ name: BRG, passHF: 4.5, src: 'default' }, VALUES,
+    { strings: BASE.slice(0, 6).map((s, i) => ({ desc: s[0], dist: s[1], rounds: s[2], stop: i === 5 })) }),
+];
+
+/* ---------------------------------------------------------------- utils */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const clone = o => JSON.parse(JSON.stringify(o));
+const uid = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+const fmtHF = h => h == null ? '—' : h.toFixed(4);
+const fmtT = t => t ? t.toFixed(2) : '—';
+const plural = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
+const today = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+const prettyDate = s => { const [y, m, d] = String(s).split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }); };
+const ago = ts => { if (!ts) return 'never'; const m = Math.round((Date.now() - ts) / 60000); if (m < 1) return 'just now'; if (m < 60) return m + ' min ago'; const h = Math.round(m / 60); if (h < 24) return h + ' hr ago'; return Math.round(h / 24) + ' days ago'; };
+const initials = n => String(n).trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase();
+const ICON = {
+  back: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>',
+  dots: '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2.2"/><circle cx="12" cy="12" r="2.2"/><circle cx="19" cy="12" r="2.2"/></svg>',
+  gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
+  qr: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM18 18h3v3h-3zM14 20h2M20 14v2"/></svg>',
+  person: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>',
+};
+
+/* ---------------------------------------------------------------- state */
+function freshState() {
+  return { v: 1, settings: { scriptUrl: '', formUrl: '', sendEmail: true, keepAwake: true },
+    courses: clone(DEFAULT_COURSES), roster: [], rosterAt: 0, formUrlFromSheet: '', sessions: [] };
+}
+function load() {
+  try { const s = JSON.parse(localStorage.getItem(LS)); if (s && s.v === 1) return s; } catch (e) { /* ignore */ }
+  return freshState();
+}
+let S = load();
+function save() {
+  try { localStorage.setItem(LS, JSON.stringify(S)); }
+  catch (e) { toast('Could not save on this phone. Export a backup in Settings.'); }
+}
+
+/* ------------------------------------------------------------ scoring math */
+function stopsOf(course) {
+  const groups = []; let cur = [];
+  course.strings.forEach((s, i) => { cur.push(i); if (s.stop || i === course.strings.length - 1) { groups.push(cur); cur = []; } });
+  return groups;
+}
+function roundsIn(course, idxs) { return idxs.reduce((t, i) => t + (Number(course.strings[i].rounds) || 0), 0); }
+function deduct(course) {
+  return { c: course.a - course.c, d: course.a - course.d, m: course.a - course.m + (Number(course.missPen) || 0), ns: Number(course.nsPen) || 0, proc: Number(course.procPen) || 0 };
+}
+function stopLost(course, st) {
+  const k = deduct(course);
+  return (st.c || 0) * k.c + (st.d || 0) * k.d + (st.m || 0) * k.m + (st.ns || 0) * k.ns + (st.proc || 0) * k.proc;
+}
+function shape(course, sh) {
+  const n = course.strings.length, g = stopsOf(course).length;
+  sh.times = (sh.times || []).slice(0, n); while (sh.times.length < n) sh.times.push(null);
+  sh.stops = (sh.stops || []).slice(0, g); while (sh.stops.length < g) sh.stops.push({ c: 0, d: 0, m: 0, ns: 0, proc: 0, done: false });
+  return sh;
+}
+function calc(course, sh) {
+  shape(course, sh);
+  const groups = stopsOf(course);
+  const rounds = roundsIn(course, course.strings.map((_, i) => i));
+  const possible = rounds * course.a;
+  const tot = { c: 0, d: 0, m: 0, ns: 0, proc: 0 };
+  let lost = 0, scored = 0;
+  groups.forEach((g, gi) => {
+    const st = sh.stops[gi];
+    Object.keys(tot).forEach(k => tot[k] += st[k] || 0);
+    lost += stopLost(course, st);
+    if (st.done) scored++;
+  });
+  const points = Math.max(0, possible - lost);
+  const timed = sh.times.filter(t => t > 0).length;
+  const totalTime = sh.times.reduce((t, x) => t + (x > 0 ? x : 0), 0);
+  const complete = timed === course.strings.length && scored === groups.length;
+  const hf = complete && totalTime > 0 ? points / totalTime : null;
+  const pass = hf != null && hf + 1e-9 >= course.passHF;
+  return Object.assign({ possible, points, lost, totalTime, timed, scored, stops: groups.length, complete, hf, pass, rounds }, tot);
+}
+const sig = (sess, sh) => JSON.stringify([sh.name, sh.email, sh.times, sh.stops, sess.course.name, sess.course.passHF, sess.date]);
+const pendingIn = sess => sess.shooters.filter(sh => calc(sess.course, sh).complete && sh.synced !== sig(sess, sh));
+const allPending = () => S.sessions.reduce((t, s) => t + pendingIn(s).length, 0);
+
+/* ---------------------------------------------------------------- router */
+let lastStop = null;
+function go(hash) { if (location.hash === hash) render(); else location.hash = hash; }
+function parts() { return location.hash.replace(/^#\/?/, '').split('/').filter(Boolean); }
+window.addEventListener('hashchange', () => { render(); window.scrollTo(0, 0); });
+const sessById = id => S.sessions.find(s => s.id === id);
+
+function render() {
+  const p = parts();
+  $('#sum').hidden = true; $('#app').classList.remove('has-sum');
+  document.body.classList.toggle('kiosk', p[0] === 's' && p[2] === 'signin');
+  let out;
+  if (p[0] === 'settings') out = vSettings();
+  else if (p[0] === 's' && sessById(p[1])) {
+    const sess = sessById(p[1]);
+    if (p[2] === 'signin') out = vSignin(sess);
+    else if (p[2] === 'p') {
+      const sh = sess.shooters.find(x => x.id === p[3]);
+      out = sh ? vShooter(sess, sh) : vSession(sess, 'shooters');
+    } else out = vSession(sess, p[2] || 'shooters');
+  } else out = vHome();
+  $('#bar').innerHTML = out.bar;
+  $('#app').innerHTML = out.body;
+  if (out.after) out.after();
+  showTarget();
+  wake(p[0] === 's');
+}
+function bar(title, sub, back, right) {
+  return (back ? `<button class="iconbtn" data-act="nav" data-to="${back}" aria-label="Back">${ICON.back}</button>` : '') +
+    `<div class="ttl"><b>${esc(title)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</div>` + (right || '');
+}
+
+/* ------------------------------------------------------------------ home */
+function vHome() {
+  const pend = allPending();
+  const roster = S.roster.length;
+  const sessions = S.sessions.slice().sort((a, b) => (b.date + b.created).localeCompare(a.date + a.created));
+  const body = `
+  <div class="hero"><img src="logo.png" alt=""><div><h1>Range Scoring</h1><p>My Own Defender</p></div></div>
+  <div class="status">
+    <div class="card"><div class="k">Sign-ups</div><div class="v num">${roster}</div>
+      <button class="btn sm blue" style="width:100%" data-act="loadRoster">Load</button>
+      <div class="small dim" style="margin-top:6px">Updated ${ago(S.rosterAt)}</div></div>
+    <div class="card"><div class="k">Waiting to sync</div><div class="v num">${pend}</div>
+      <button class="btn sm ${pend ? 'primary' : ''}" style="width:100%" data-act="sync" ${pend ? '' : 'disabled'}>Sync</button>
+      <div class="small dim" style="margin-top:6px">${S.settings.sendEmail ? 'Emails results' : 'Email is off'}</div></div>
+  </div>
+  <div style="margin-top:16px"><button class="btn primary" data-act="newSession">+ New qualification</button></div>
+  <div class="sect">Qualifications</div>
+  ${sessions.length ? `<div class="list">${sessions.map(s => {
+    const res = s.shooters.map(sh => calc(s.course, sh));
+    const done = res.filter(r => r.complete).length, passed = res.filter(r => r.pass).length;
+    return `<button class="li" data-act="nav" data-to="#/s/${s.id}"><div class="main"><b>${esc(s.course.name)}</b>
+      <small>${prettyDate(s.date)} · ${plural(s.shooters.length, 'shooter')} · ${done} scored · ${passed} passed</small></div><span class="chev">›</span></button>`;
+  }).join('')}</div>` : `<div class="card empty">No qualifications yet.<br>Tap <b>New qualification</b> to start.</div>`}
+  <div class="two" style="margin-top:18px">
+    <button class="btn" data-act="qr">${ICON.qr}<span>Sign-in QR</span></button>
+    <button class="btn" data-act="nav" data-to="#/settings">${ICON.gear}<span>Settings</span></button>
+  </div>
+  ${!S.settings.scriptUrl ? `<div class="card small muted" style="margin-top:14px">Not connected to your Google Sheet yet. You can still score — results stay on this phone. Add your Script URL in <b>Settings</b> to load sign-ups and sync.</div>` : ''}`;
+  return { bar: bar('MOD Range Scoring', 'Hit factor qualifications', null, `<button class="iconbtn" data-act="nav" data-to="#/settings" aria-label="Settings">${ICON.gear}</button>`), body };
+}
+
+/* --------------------------------------------------------------- session */
+function vSession(sess, tab) {
+  const c = sess.course;
+  const res = sess.shooters.map(sh => ({ sh, r: calc(c, sh) }));
+  const pts = c.a * roundsIn(c, c.strings.map((_, i) => i));
+  const tabs = `<div class="tabs">
+    <button class="${tab === 'shooters' ? 'on' : ''}" data-act="nav" data-to="#/s/${sess.id}">Shooters</button>
+    <button class="${tab === 'line' ? 'on' : ''}" data-act="nav" data-to="#/s/${sess.id}/line">Run the line</button>
+    <button class="${tab === 'board' ? 'on' : ''}" data-act="nav" data-to="#/s/${sess.id}/board">Leaderboard</button></div>`;
+  const info = `<div class="small muted" style="margin-top:12px">${plural(c.strings.length, 'string')} · ${pts} points · ${plural(stopsOf(c).length, 'scoring stop')} · Pass ≥ <b class="num">${c.passHF}</b></div>`;
+  let body = info + tabs;
+
+  if (tab === 'line') body += lineView(sess);
+  else if (tab === 'board') {
+    const done = res.filter(x => x.r.complete).sort((a, b) => b.r.hf - a.r.hf);
+    const rest = res.filter(x => !x.r.complete);
+    const passed = done.filter(x => x.r.pass).length;
+    body += `<div class="card row" style="margin-bottom:12px"><div class="grow"><b>${passed} of ${done.length} passed</b><div class="small muted">${rest.length ? plural(rest.length, 'shooter') + ' still in progress' : 'Everyone is scored'}</div></div>
+      <span class="pill ${passed === done.length && done.length ? 'pass' : 'wait'}">PASS ≥ ${c.passHF}</span></div>
+      ${done.length ? `<div class="list lb">${done.map((x, i) => `<button class="li" data-act="nav" data-to="#/s/${sess.id}/p/${x.sh.id}">
+        <div class="rank num">${i + 1}</div><div class="main"><b>${esc(x.sh.name)}</b><small class="num">${x.r.points}/${x.r.possible} pts · ${x.r.totalTime.toFixed(2)} s</small></div>
+        <div class="side"><div class="hf num">${fmtHF(x.r.hf)}</div><span class="pill ${x.r.pass ? 'pass' : 'fail'}">${x.r.pass ? 'PASS' : 'BELOW'}</span></div></button>`).join('')}</div>`
+        : `<div class="card empty">Nobody is fully scored yet.</div>`}
+      ${rest.length ? `<div class="sect">In progress</div><div class="list">${rest.map(x => shooterRow(sess, x.sh, x.r)).join('')}</div>` : ''}`;
+  } else {
+    body += sess.shooters.length ? `<div class="list">${res.map(x => shooterRow(sess, x.sh, x.r)).join('')}</div>`
+      : `<div class="card empty">No shooters yet.</div>`;
+    body += `<div class="two" style="margin-top:12px"><button class="btn" data-act="addShooter" data-s="${sess.id}">+ Add shooter</button><button class="btn" data-act="nav" data-to="#/s/${sess.id}/signin">Sign-in screen</button></div>`;
+    const pend = pendingIn(sess).length;
+    if (pend) body += `<div style="margin-top:10px"><button class="btn primary" data-act="sync">Sync ${plural(pend, 'result')}</button></div>`;
+  }
+  return { bar: bar(c.name, prettyDate(sess.date), '#/', timerChip() + `<button class="iconbtn" data-act="sessMenu" data-s="${sess.id}" aria-label="More">${ICON.dots}</button>`), body, after: tab === 'line' ? () => lineAfter(sess) : null };
+}
+function shooterRow(sess, sh, r) {
+  const status = r.complete ? `<div class="hf num">${fmtHF(r.hf)}</div><span class="pill ${r.pass ? 'pass' : 'fail'}">${r.pass ? 'PASS' : 'BELOW'}</span>`
+    : `<span class="pill wait num">${r.timed}/${sh.times.length} times</span><div class="small dim" style="margin-top:4px">${r.scored}/${r.stops} scored</div>`;
+  const synced = r.complete && sh.synced === sig(sess, sh);
+  return `<button class="li" data-act="nav" data-to="#/s/${sess.id}/p/${sh.id}"><div class="av">${esc(initials(sh.name))}</div>
+    <div class="main"><b>${esc(sh.name)}</b><small>${esc(sh.email || 'No email')}${synced ? ' · synced' : ''}</small></div>
+    <div class="side">${status}</div></button>`;
+}
+
+/* ---------------------------------------------------------- run the line */
+let lineStr = {};
+function lineView(sess) {
+  const c = sess.course, i = Math.min(lineStr[sess.id] || 0, c.strings.length - 1), s = c.strings[i];
+  const groups = stopsOf(c), gi = groups.findIndex(g => g.includes(i));
+  if (!sess.shooters.length) return `<div class="card empty">Add shooters first.</div>`;
+  return `<div class="chips">${c.strings.map((x, k) => `<button class="chip ${k === i ? 'on' : ''} ${x.stop || k === c.strings.length - 1 ? 'stop' : ''}" data-act="lineStr" data-s="${sess.id}" data-i="${k}">S${k + 1}</button>`).join('')}</div>
+  <div class="strCard"><div class="small muted">String ${i + 1} of ${c.strings.length} · ${esc(s.dist)} yd · ${plural(Number(s.rounds), 'round')}</div><b>${esc(s.desc)}</b></div>
+  <div class="list">${sess.shooters.map(sh => `<div class="str"><button class="av aim" data-act="aim" data-s="${sess.id}" data-p="${sh.id}" data-i="${i}" aria-label="Send next timer string here">${esc(initials(sh.name))}</button><div class="d"><b style="font-size:16px">${esc(sh.name)}</b><span id="w-${sh.id}-${i}">${shotWarn(sh, i, s.rounds)}</span></div>
+    <input class="tin ${sh.times[i] > 0 ? 'ok' : ''}" data-time data-s="${sess.id}" data-p="${sh.id}" data-i="${i}" inputmode="decimal" enterkeyhint="next" autocomplete="off" placeholder="—" value="${sh.times[i] > 0 ? sh.times[i].toFixed(2) : ''}"></div>`).join('')}</div>
+  ${(s.stop || i === c.strings.length - 1) ? `<div class="card" style="margin-top:12px;border-color:rgba(242,184,75,.5)"><b style="color:var(--warn)">Scoring stop ${gi + 1}</b><div class="small muted" style="margin:4px 0 10px">Go score the targets for strings ${groups[gi][0] + 1}–${groups[gi][groups[gi].length - 1] + 1}.</div>
+    <button class="btn blue" data-act="scoreStop" data-s="${sess.id}" data-g="${gi}">Score stop ${gi + 1}</button></div>` : ''}
+  ${i < c.strings.length - 1 ? `<div style="margin-top:12px"><button class="btn" data-act="lineStr" data-s="${sess.id}" data-i="${i + 1}">Next: String ${i + 2} ›</button></div>` : ''}`;
+}
+function lineAfter() { const first = $$('.tin').find(x => !x.value); if (first && !('ontouchstart' in window)) first.focus(); }
+
+/* --------------------------------------------------------------- shooter */
+function vShooter(sess, sh) {
+  const c = sess.course, groups = stopsOf(c), k = deduct(c);
+  shape(c, sh);
+  const idx = sess.shooters.indexOf(sh);
+  let body = `<div class="row" style="margin-top:14px"><div class="grow small muted">${esc(sh.email || 'No email — results won’t be emailed')}</div>
+    <button class="btn sm" data-act="editShooter" data-s="${sess.id}" data-p="${sh.id}">Edit</button></div>`;
+  groups.forEach((g, gi) => {
+    const st = sh.stops[gi], rds = roundsIn(c, g), hits = st.c + st.d + st.m, poss = rds * c.a;
+    body += `<div class="stopHead"><b>Stop ${gi + 1} · Strings ${g[0] + 1}–${g[g.length - 1] + 1}</b><span class="small dim num">${rds} rds · ${poss} pts</span></div>
+    <div class="list">${g.map(i => { const s = c.strings[i]; return `<div class="str"><button class="n aim" data-act="aim" data-s="${sess.id}" data-p="${sh.id}" data-i="${i}" aria-label="Send next timer string here">${i + 1}</button>
+      <div class="d">${esc(s.desc)}<small>${esc(s.dist)} yd · ${plural(Number(s.rounds), 'round')}</small><span id="w-${sh.id}-${i}">${shotWarn(sh, i, s.rounds)}</span></div>
+      <input class="tin ${sh.times[i] > 0 ? 'ok' : ''}" data-time data-s="${sess.id}" data-p="${sh.id}" data-i="${i}" inputmode="decimal" enterkeyhint="next" autocomplete="off" placeholder="—" value="${sh.times[i] > 0 ? sh.times[i].toFixed(2) : ''}"></div>`; }).join('')}</div>
+    <div class="card score ${st.done ? 'done' : ''}" id="stop${gi}" style="margin-top:10px">
+      <div class="top"><b>Score targets</b>${st.done ? `<span class="pill pass num">${poss - stopLost(c, st)} / ${poss}</span>` : `<span class="pill warn">NOT SCORED</span>`}</div>
+      <div class="ctrs">${ctr('c', 'C', k.c, st.c, hits >= rds, sess, sh, gi)}${ctr('d', 'D', k.d, st.d, hits >= rds, sess, sh, gi)}${ctr('m', 'M', k.m, st.m, hits >= rds, sess, sh, gi)}</div>
+      ${(st.ns || st.proc || st.showPen) ? `<div class="ctrs pen">${ctr('ns', 'No-shoot', k.ns, st.ns, false, sess, sh, gi)}${ctr('proc', 'Procedural', k.proc, st.proc, false, sess, sh, gi)}</div>`
+        : `<button class="linkbtn" data-act="showPen" data-s="${sess.id}" data-p="${sh.id}" data-g="${gi}">+ No-shoots / procedurals</button>`}
+      <div style="margin-top:10px">${st.done
+        ? `<div class="row"><div class="grow small muted">Everything not marked counts as an Alpha.</div><button class="linkbtn" data-act="undone" data-s="${sess.id}" data-p="${sh.id}" data-g="${gi}">Unmark</button></div>`
+        : `<button class="btn blue" data-act="done" data-s="${sess.id}" data-p="${sh.id}" data-g="${gi}">${hits ? 'Done scoring' : 'All Alphas ✓'}</button>`}</div>
+    </div>`;
+  });
+  const after = () => {
+    updateSum(sess, sh, idx);
+    if (lastStop != null && $('#stop' + lastStop)) { const el = $('#stop' + lastStop); window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 90); }
+  };
+  return { bar: bar(sh.name, `${c.name} · ${idx + 1} of ${sess.shooters.length}`, '#/s/' + sess.id, timerChip()), body, after };
+}
+function ctr(key, label, ded, val, full, sess, sh, gi) {
+  return `<div class="ctr ${key}"><div class="lab">${label} <span>−${ded}</span></div><div class="val num">${val || 0}</div>
+    <div class="pm"><button data-act="cnt" data-k="${key}" data-d="-1" data-s="${sess.id}" data-p="${sh.id}" data-g="${gi}" ${val ? '' : 'disabled'} aria-label="minus">−</button>
+    <button class="plus" data-act="cnt" data-k="${key}" data-d="1" data-s="${sess.id}" data-p="${sh.id}" data-g="${gi}" ${full ? 'disabled' : ''} aria-label="plus">+</button></div></div>`;
+}
+function updateSum(sess, sh, idx) {
+  const r = calc(sess.course, sh), n = sess.shooters.length;
+  const prev = sess.shooters[idx - 1], next = sess.shooters[idx + 1];
+  const el = $('#sum'); el.hidden = false; $('#app').classList.add('has-sum');
+  el.innerHTML = `<div class="in">
+    <div><div class="k">Points</div><div class="v num">${r.points}<span class="dim" style="font-size:14px">/${r.possible}</span></div></div>
+    <div><div class="k">Time</div><div class="v num">${r.totalTime ? r.totalTime.toFixed(2) : '—'}</div></div>
+    <div style="text-align:right"><div class="k">Hit factor</div><div class="hfv num">${fmtHF(r.hf)}</div>
+      <span class="pill ${r.complete ? (r.pass ? 'pass' : 'fail') : 'wait'}">${r.complete ? (r.pass ? 'PASS' : 'BELOW ' + sess.course.passHF) : `${r.timed}/${sh.times.length} times · ${r.scored}/${r.stops} scored`}</span></div></div>
+    <div class="navs"><button class="btn sm" style="width:100%" data-act="nav" data-to="${prev ? `#/s/${sess.id}/p/${prev.id}` : ''}" ${prev ? '' : 'disabled'}>‹ ${prev ? esc(prev.name.split(' ')[0]) : 'Prev'}</button>
+    <button class="btn sm ${next ? '' : 'primary'}" style="width:100%" data-act="nav" data-to="${next ? `#/s/${sess.id}/p/${next.id}` : `#/s/${sess.id}/board`}">${next ? esc(next.name.split(' ')[0]) + ' ›' : 'Leaderboard ›'}</button></div>`;
+}
+
+/* --------------------------------------------------------- sign-in kiosk
+   Hand the tablet down the line. Each person types their own name and email.
+   No one can see anyone else's details, and leaving takes a 1.5-second hold. */
+let kioskDone = null;
+function vSignin(sess) {
+  const n = sess.shooters.length;
+  const body = kioskDone
+    ? `<div class="kio"><img src="logo.png" alt="">
+        <div class="ok"><div class="big">✓</div><b>${esc(kioskDone.msg)}</b><div class="sub" style="margin-top:8px">${esc(kioskDone.sub)}</div></div>
+        <div class="sub" style="margin-top:22px">Please hand the tablet to the next person.</div></div>`
+    : `<div class="kio"><img src="logo.png" alt="">
+        <h1>Sign in</h1><div class="sub">${esc(sess.course.name)} · ${prettyDate(sess.date)}</div>
+        <form id="kform" autocomplete="off" novalidate>
+          <label class="f"><span>Full name</span><input class="in-t" id="kName" autocapitalize="words" autocorrect="off" spellcheck="false" enterkeyhint="next" placeholder="First and last name"></label>
+          <label class="f"><span>Email — your score is sent here</span><input class="in-t" id="kEmail" type="email" inputmode="email" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done" placeholder="you@example.com"></label>
+          <div style="margin-top:18px"><button class="btn primary" type="submit">Sign me in</button></div>
+        </form>
+        <div class="sub" style="margin-top:16px">${plural(n, 'shooter')} on the list</div>
+        <button class="kexit" id="kexit" type="button" data-s="${sess.id}"><i></i><span>Instructor: press and hold to exit</span></button></div>`;
+  return { bar: '', body, after: kioskDone ? null : () => { const el = $('#kName'); if (el && !('ontouchstart' in window)) el.focus(); } };
+}
+function kioskSubmit(sess) {
+  let name = ($('#kName').value || '').trim().replace(/\s+/g, ' ');
+  if (name === name.toLowerCase() || name === name.toUpperCase()) name = name.toLowerCase().replace(/(^|[\s'-])\S/g, m => m.toUpperCase());
+  const email = ($('#kEmail').value || '').trim();
+  if (name.length < 2) { toast('Please type your full name'); $('#kName').focus(); return; }
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast('That email doesn’t look right'); $('#kEmail').focus(); return; }
+  const first = name.split(' ')[0];
+  const existing = sess.shooters.find(x => x.name.toLowerCase() === name.toLowerCase());
+  if (existing) {
+    if (email && !existing.email) { existing.email = email; save(); }
+    kioskDone = { msg: `You’re already on the list, ${first}`, sub: email && existing.email === email ? 'Your email is saved.' : 'See your instructor if anything looks wrong.' };
+  } else {
+    addShooters(sess, [{ name, email }]);
+    kioskDone = { msg: `You’re in, ${first}`, sub: email ? 'Your score will be emailed after the course.' : 'No email given — ask your instructor for your score.' };
+  }
+  if (document.activeElement) document.activeElement.blur();
+  render();
+  setTimeout(() => { kioskDone = null; if (parts()[2] === 'signin') render(); }, 2600);
+}
+document.addEventListener('submit', e => {
+  if (e.target.id === 'kform') { e.preventDefault(); const sess = sessById(parts()[1]); if (sess) kioskSubmit(sess); }
+});
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'kName') { e.preventDefault(); $('#kEmail').focus(); } });
+let kHold = null;
+document.addEventListener('pointerdown', e => {
+  const k = e.target.closest('#kexit'); if (!k) return;
+  k.classList.add('hold');
+  kHold = setTimeout(() => { kHold = null; kioskDone = null; go('#/s/' + k.dataset.s); }, 1500);
+});
+['pointerup', 'pointercancel', 'pointerleave'].forEach(t => document.addEventListener(t, () => {
+  if (kHold) { clearTimeout(kHold); kHold = null; } const k = $('#kexit'); if (k) k.classList.remove('hold');
+}));
+
+/* --------------------------------------------------------------- settings */
+function vSettings() {
+  const st = S.settings;
+  const body = `
+  <div class="sect">Google Sheet connection</div>
+  <div class="card">
+    <label class="f"><span>Apps Script web app URL</span><input class="in-t" id="scriptUrl" placeholder="https://script.google.com/macros/s/…/exec" value="${esc(st.scriptUrl)}" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+    <div style="margin-top:12px"><button class="btn blue" data-act="saveUrl">Save &amp; load sign-ups</button></div>
+    <div class="small dim" style="margin-top:8px">Sign-ups updated ${ago(S.rosterAt)} · ${plural(S.roster.length, 'person')}</div>
+  </div>
+  <div class="sect">Shot timer</div>
+  <div class="card row"><div class="grow"><b id="tstat">${T.on ? esc(T.name) + ' connected' : 'Not connected'}</b><div class="small muted">AMG Lab Commander over Bluetooth</div></div>
+    <button class="btn sm ${T.on ? '' : 'blue'}" data-act="timer">${T.on ? 'Open' : 'Connect'}</button></div>
+  <div class="sect">Results</div>
+  <div class="card">
+    <div class="toggle"><div><b>Email results to shooters</b><div class="small muted">Sent from your Google account when you sync</div></div><input type="checkbox" data-set="sendEmail" ${st.sendEmail ? 'checked' : ''}></div>
+    <div class="toggle"><div><b>Keep screen awake while scoring</b><div class="small muted">Where the phone supports it</div></div><input type="checkbox" data-set="keepAwake" ${st.keepAwake ? 'checked' : ''}></div>
+    <label class="f"><span>Sign-in form link (filled in automatically from your Sheet)</span><input class="in-t" id="formUrl" placeholder="https://docs.google.com/forms/…" value="${esc(st.formUrl || S.formUrlFromSheet)}" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+  </div>
+  <div class="sect">Courses</div>
+  <div class="list">${S.courses.map((c, i) => `<button class="li" data-act="viewCourse" data-i="${i}"><div class="main"><b>${esc(c.name)}</b>
+    <small class="num">${plural(c.strings.length, 'string')} · ${c.a * roundsIn(c, c.strings.map((_, j) => j))} pts · pass ≥ ${c.passHF} · ${c.src === 'local' ? 'this phone only' : c.src === 'sheet' ? 'from Sheet' : 'built in'}</small></div><span class="chev">›</span></button>`).join('')}</div>
+  <div class="small muted" style="margin:8px 2px">To add or change a course for good, edit the <b>Courses</b> and <b>Strings</b> tabs in your Sheet, then tap Load. For a one-off, make a quick course here.</div>
+  <button class="btn" data-act="newCourse">+ Quick course (this phone)</button>
+  <div class="sect">Backup</div>
+  <div class="two"><button class="btn" data-act="exportAll">Export CSV</button><button class="btn" data-act="backup">Backup file</button></div>
+  <div style="margin-top:10px"><button class="btn ghost" data-act="restore">Restore from backup file</button></div>
+  <div class="small dim" style="text-align:center;margin-top:22px">MOD Range Scoring v${VERSION}</div>`;
+  return { bar: bar('Settings', '', '#/'), body };
+}
+
+/* ------------------------------------------------------------------ modal */
+function openModal(html) { $('#sheet').innerHTML = '<div class="grab"></div>' + html; $('#modal').classList.add('open'); }
+function closeModal() { $('#modal').classList.remove('open'); $('#sheet').innerHTML = ''; }
+$('#modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
+let toastT;
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.toggle('high', !$('#sum').hidden); t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2800); }
+
+/* --- new session */
+let ns = null;
+function newSessionModal() {
+  if (!ns) ns = { course: S.courses[0] && S.courses[0].name, date: today(), picked: {}, extra: [], older: false };
+  const course = S.courses.find(c => c.name === ns.course) || S.courses[0];
+  const cutoff = Date.now() - 4 * 86400000;
+  const list = S.roster.filter(r => !r.course || r.course === course.name);
+  const recent = list.filter(r => r.ts >= cutoff), older = list.filter(r => r.ts < cutoff);
+  recent.forEach(r => { if (ns.picked[r.name] === undefined) ns.picked[r.name] = true; });
+  const shown = ns.older ? recent.concat(older) : recent;
+  openModal(`<h2>New qualification</h2>
+    <label class="f"><span>Course</span></label>
+    ${S.courses.map(c => `<button class="courseOpt ${c.name === course.name ? 'on' : ''}" data-act="nsCourse" data-n="${esc(c.name)}"><b>${esc(c.name)}</b>
+      <small class="num">${plural(c.strings.length, 'string')} · ${c.a * roundsIn(c, c.strings.map((_, j) => j))} pts · ${plural(stopsOf(c).length, 'scoring stop')} · pass ≥ ${c.passHF}</small></button>`).join('')}
+    <label class="f"><span>Date</span><input type="date" class="in-t" id="nsDate" value="${ns.date}"></label>
+    <div class="row" style="margin-top:16px"><b class="grow">Shooters</b><button class="linkbtn" data-act="loadRoster" data-again="ns">Refresh sign-ups</button></div>
+    <div class="list" style="margin-top:6px">${shown.length ? shown.map(r => `<label class="check"><input type="checkbox" data-pick="${esc(r.name)}" ${ns.picked[r.name] ? 'checked' : ''}>
+      <div class="grow"><b>${esc(r.name)}</b><div class="small muted">${esc(r.email || '')}${r.ts ? ' · signed in ' + ago(r.ts) : ''}</div></div></label>`).join('')
+      : `<div class="empty small">No recent sign-ups for this course${S.settings.scriptUrl ? '' : ' (not connected to your Sheet)'}.</div>`}
+      ${ns.extra.map((x, i) => `<div class="check"><input type="checkbox" checked disabled><div class="grow"><b>${esc(x.name)}</b><div class="small muted">${esc(x.email || 'added by hand')}</div></div><button class="linkbtn danger" data-act="nsDel" data-i="${i}">Remove</button></div>`).join('')}
+    </div>
+    ${older.length && !ns.older ? `<button class="linkbtn" data-act="nsOlder">Show ${plural(older.length, 'older sign-up')}</button>` : ''}
+    ${addByHand('nsAdd')}
+    <div style="margin-top:18px"><button class="btn primary" data-act="nsStart">Start qualification</button></div>`);
+}
+function addByHand(act) {
+  return `<div class="card" style="margin-top:12px;background:var(--bg)"><b>Walk-up? Add by hand</b>
+    <input class="in-t" id="hName" placeholder="Full name" style="margin-top:8px" autocomplete="off" autocapitalize="words">
+    <input class="in-t" id="hEmail" placeholder="Email (optional)" type="email" style="margin-top:8px" autocomplete="off" autocapitalize="off">
+    <div style="margin-top:8px"><button class="btn sm" style="width:100%" data-act="${act}">Add</button></div></div>`;
+}
+function readHand() {
+  const name = ($('#hName').value || '').trim().replace(/\s+/g, ' '), email = ($('#hEmail').value || '').trim();
+  if (!name) { toast('Type a name first'); return null; }
+  return { name, email };
+}
+
+/* --- add shooter in a session */
+let addPicked = {};
+function addShooterModal(sess) {
+  const have = new Set(sess.shooters.map(s => s.name.toLowerCase()));
+  const avail = S.roster.filter(r => !have.has(r.name.toLowerCase()));
+  const mine = avail.filter(r => r.course === sess.course.name), others = avail.filter(r => r.course !== sess.course.name);
+  const item = r => `<label class="check"><input type="checkbox" data-addpick="${esc(r.name)}" ${addPicked[r.name] ? 'checked' : ''}><div class="grow"><b>${esc(r.name)}</b><div class="small muted">${esc(r.course || '')} · ${ago(r.ts)}</div></div></label>`;
+  openModal(`<h2>Add shooters</h2>
+    <div class="row"><div class="grow small muted">From sign-ups</div><button class="linkbtn" data-act="loadRoster" data-again="add" data-s="${sess.id}">Refresh sign-ups</button></div>
+    <div class="list" style="margin-top:6px">${mine.length ? mine.map(item).join('') : '<div class="empty small">No new sign-ups for this course.</div>'}</div>
+    ${others.length ? `<div class="sect">Other classes</div><div class="list">${others.slice(0, 30).map(item).join('')}</div>` : ''}
+    <div style="margin-top:12px"><button class="btn blue" data-act="addPicked" data-s="${sess.id}">Add selected</button></div>
+    ${addByHand('addHand')}`);
+  $('#sheet').dataset.s = sess.id;
+}
+function addShooters(sess, people) {
+  people.forEach(p => sess.shooters.push(shape(sess.course, { id: uid(), name: p.name, email: p.email || '', times: [], stops: [] })));
+  save();
+}
+
+/* --- shooter edit */
+function editShooterModal(sess, sh) {
+  openModal(`<h2>Edit shooter</h2>
+    <label class="f"><span>Name</span><input class="in-t" id="eName" value="${esc(sh.name)}" autocapitalize="words"></label>
+    <label class="f"><span>Email</span><input class="in-t" id="eEmail" type="email" value="${esc(sh.email || '')}" autocapitalize="off"></label>
+    <div style="margin-top:16px"><button class="btn blue" data-act="saveShooter" data-s="${sess.id}" data-p="${sh.id}">Save</button></div>
+    <div style="margin-top:10px"><button class="btn ghost danger" data-act="delShooter" data-s="${sess.id}" data-p="${sh.id}">Remove from this qualification</button></div>`);
+}
+
+/* --- session menu */
+function sessMenu(sess) {
+  openModal(`<h2>${esc(sess.course.name)}</h2><div class="small muted">${prettyDate(sess.date)}</div><div class="menu">
+    <button class="btn" data-act="editSessCourse" data-s="${sess.id}">Edit course for this qualification</button>
+    <button class="btn" data-act="nav" data-to="#/s/${sess.id}/signin">Sign-in screen (hand to shooters)</button>
+    <button class="btn" data-act="exportSess" data-s="${sess.id}">Export CSV</button>
+    <button class="btn" data-act="qr">Show sign-in QR</button>
+    <button class="btn ghost danger" data-act="delSess" data-s="${sess.id}">Delete this qualification</button></div>`);
+}
+
+/* --- course viewer / editor */
+let ed = null;
+function courseEditor(course, target) {
+  ed = { c: clone(course), target };
+  drawEditor();
+}
+function drawEditor() {
+  const c = ed.c;
+  const num = (k, label, step) => `<label class="f"><span>${label}</span><input class="in-t num" inputmode="decimal" data-ed="${k}" value="${esc(c[k])}" ${step ? `step="${step}"` : ''}></label>`;
+  const k = deduct(c);
+  openModal(`<h2>${ed.target === 'session' ? 'Edit course (this qualification only)' : 'Quick course'}</h2>
+    <label class="f"><span>Course name</span><input class="in-t" data-ed="name" value="${esc(c.name)}"></label>
+    <div class="two">${num('passHF', 'Passing hit factor')}${num('a', 'Alpha points')}</div>
+    <div class="two">${num('c', 'Charlie points')}${num('d', 'Delta points')}</div>
+    <div class="two">${num('m', 'Miss points')}${num('missPen', 'Extra miss penalty')}</div>
+    <div class="two">${num('nsPen', 'No-shoot penalty')}${num('procPen', 'Procedural penalty')}</div>
+    <div class="small muted" style="margin-top:8px">Deductions from an Alpha: C −${k.c} · D −${k.d} · Miss −${k.m} · NS −${k.ns} · Proc −${k.proc}</div>
+    <div class="sect">Strings</div>
+    ${c.strings.map((s, i) => `<div class="edStr"><div class="row"><b class="grow">String ${i + 1}</b><button class="linkbtn danger" data-act="edDel" data-i="${i}">Remove</button></div>
+      <textarea class="in-t" data-eds="${i}" data-f="desc" placeholder="Description">${esc(s.desc)}</textarea>
+      <div class="row"><input class="in-t" data-eds="${i}" data-f="dist" placeholder="Yards" value="${esc(s.dist)}"><input class="in-t num" inputmode="numeric" data-eds="${i}" data-f="rounds" placeholder="Rounds" value="${esc(s.rounds)}"></div>
+      <label class="check" style="padding:10px 0 2px;border:0;min-height:0"><input type="checkbox" data-eds="${i}" data-f="stop" ${s.stop ? 'checked' : ''}><span>Score targets after this string</span></label></div>`).join('')}
+    <div style="margin-top:10px"><button class="btn" data-act="edAdd">+ Add string</button></div>
+    <div style="margin-top:16px"><button class="btn primary" data-act="edSave">Save course</button></div>
+    ${ed.target !== 'session' && ed.idx != null ? `<div style="margin-top:10px"><button class="btn ghost danger" data-act="edRemove">Delete this course</button></div>` : ''}`);
+}
+function readEditor() {
+  const c = ed.c;
+  $$('[data-ed]').forEach(el => { const k = el.dataset.ed; c[k] = k === 'name' ? el.value.trim() : Number(el.value) || 0; });
+  $$('[data-eds]').forEach(el => { const s = c.strings[+el.dataset.eds], f = el.dataset.f; s[f] = f === 'stop' ? el.checked : f === 'rounds' ? Math.max(0, parseInt(el.value, 10) || 0) : el.value; });
+}
+function viewCourse(i) {
+  const c = S.courses[i];
+  if (c.src === 'local') { courseEditor(c, 'library'); ed.idx = i; drawEditor(); return; }
+  const k = deduct(c), groups = stopsOf(c);
+  openModal(`<h2>${esc(c.name)}</h2><div class="small muted">${c.src === 'sheet' ? 'From your Google Sheet' : 'Built in'} · pass ≥ ${c.passHF}</div>
+    <div class="small muted" style="margin-top:6px">A ${c.a} · C −${k.c} · D −${k.d} · Miss −${k.m} · No-shoot −${k.ns} · Procedural −${k.proc}</div>
+    ${groups.map((g, gi) => `<div class="stopHead"><b>Stop ${gi + 1}</b><span class="small dim">${roundsIn(c, g) * c.a} pts</span></div><div class="list">${g.map(j => `<div class="str"><div class="n">${j + 1}</div><div class="d">${esc(c.strings[j].desc)}<small>${esc(c.strings[j].dist)} yd · ${plural(Number(c.strings[j].rounds), 'round')}</small></div></div>`).join('')}</div>`).join('')}
+    <div style="margin-top:14px"><button class="btn" data-act="dupCourse" data-i="${i}">Copy as a quick course</button></div>`);
+}
+
+/* --- QR */
+function qrModal() {
+  const url = S.settings.formUrl || S.formUrlFromSheet;
+  if (!url) { openModal(`<h2>Sign-in QR</h2><div class="card muted" style="margin-top:10px">No form link yet. Connect your Google Sheet in <b>Settings</b> and tap Load, or paste the form link there.</div>`); return; }
+  let svg = '';
+  try { const q = qrcode(0, 'M'); q.addData(url); q.make(); svg = q.createSvgTag({ cellSize: 6, margin: 2, scalable: true }); } catch (e) { svg = ''; }
+  openModal(`<h2 style="text-align:center">Scan to sign in</h2><div class="small muted" style="text-align:center">Name, email, and class — that's it.</div>
+    <div class="qr">${svg}</div><div class="small dim" style="text-align:center;word-break:break-all">${esc(url)}</div>
+    <div class="two" style="margin-top:14px"><button class="btn" data-act="copyForm">Copy link</button><button class="btn" data-act="closeModal">Done</button></div>`);
+}
+
+/* ------------------------------------------------------------- network */
+async function loadRoster(quiet) {
+  const url = S.settings.scriptUrl;
+  if (!url) { if (!quiet) toast('Add your Script URL in Settings first'); return false; }
+  if (!navigator.onLine) { if (!quiet) toast('No signal — using the last list you loaded'); return false; }
+  try {
+    const res = await fetch(url + (url.includes('?') ? '&' : '?') + 't=' + Date.now());
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Bad response');
+    S.roster = data.roster || [];
+    S.rosterAt = Date.now();
+    if (data.formUrl) S.formUrlFromSheet = data.formUrl;
+    if (data.courses && data.courses.length) {
+      const local = S.courses.filter(c => c.src === 'local' && !data.courses.some(x => x.name === c.name));
+      S.courses = data.courses.map(c => Object.assign(c, { src: 'sheet' })).concat(local);
+    }
+    save();
+    if (!quiet) toast(`Loaded ${plural(S.roster.length, 'sign-up')}` + ((data.courses || []).length ? ` and ${plural(data.courses.length, 'course')}` : ''));
+    return true;
+  } catch (e) {
+    if (!quiet) toast('Could not reach your Sheet. Check the Script URL.');
+    return false;
+  }
+}
+async function sync() {
+  const url = S.settings.scriptUrl;
+  if (!url) { toast('Add your Script URL in Settings first'); return; }
+  if (!navigator.onLine) { toast('No signal. Results are safe on this phone — sync later.'); return; }
+  const batch = [];
+  S.sessions.forEach(sess => pendingIn(sess).forEach(sh => {
+    const r = calc(sess.course, sh);
+    batch.push({ sess, sh, sig: sig(sess, sh), payload: {
+      id: sh.id, date: prettyDate(sess.date), course: sess.course.name, name: sh.name, email: sh.email,
+      times: sh.times, totalTime: r.totalTime, c: r.c, d: r.d, m: r.m, ns: r.ns, proc: r.proc,
+      points: r.points, possible: r.possible, hf: r.hf, passHF: sess.course.passHF, pass: r.pass,
+      strings: sess.course.strings.map(s => ({ desc: s.desc, dist: s.dist, rounds: s.rounds })) } });
+  }));
+  if (!batch.length) { toast('Nothing new to sync'); return; }
+  toast('Syncing…');
+  try {
+    const res = await fetch(url, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ results: batch.map(b => b.payload), sendEmail: !!S.settings.sendEmail, appUrl: location.href.split('#')[0] }) });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Sync failed');
+    batch.forEach(b => b.sh.synced = b.sig);
+    save(); render();
+    toast(`Synced ${plural(data.saved, 'result')}` + (S.settings.sendEmail ? ` · ${data.emailed} emailed` : '') + (data.emailErrors && data.emailErrors.length ? ' · some emails failed' : ''));
+  } catch (e) {
+    toast('Sync failed. Results are still safe on this phone.');
+  }
+}
+
+/* --------------------------------------------------------------- exports */
+function download(name, text, type) {
+  const blob = new Blob([text], { type });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+const csvCell = v => { const s = String(v == null ? '' : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+function sessRows(sess) {
+  return sess.shooters.map(sh => {
+    const r = calc(sess.course, sh);
+    return [sess.date, sess.course.name, sh.name, sh.email, ...sh.times.map(t => t > 0 ? t.toFixed(2) : ''), r.totalTime.toFixed(2),
+      r.c, r.d, r.m, r.ns, r.proc, r.points, r.possible, r.hf == null ? '' : r.hf.toFixed(4), sess.course.passHF, r.complete ? (r.pass ? 'PASS' : 'BELOW STANDARD') : 'INCOMPLETE'];
+  });
+}
+function exportCSV(sessions, name) {
+  const maxN = Math.max(1, ...sessions.map(s => s.course.strings.length));
+  const head = ['Date', 'Course', 'Name', 'Email', ...Array.from({ length: maxN }, (_, i) => 'S' + (i + 1)), 'Total Time', 'C', 'D', 'M', 'NS', 'Proc', 'Points', 'Possible', 'Hit Factor', 'Pass HF', 'Result'];
+  const rows = sessions.flatMap(s => sessRows(s).map(r => { const t = r.slice(4, 4 + s.course.strings.length); while (t.length < maxN) t.push(''); return [...r.slice(0, 4), ...t, ...r.slice(4 + s.course.strings.length)]; }));
+  download(name, [head, ...rows].map(r => r.map(csvCell).join(',')).join('\n'), 'text/csv');
+}
+
+/* ------------------------------------------------------------ wake lock */
+let wl = null;
+async function wake(on) {
+  try {
+    if (on && S.settings.keepAwake && 'wakeLock' in navigator && !wl) { wl = await navigator.wakeLock.request('screen'); wl.addEventListener('release', () => wl = null); }
+    else if (!on && wl) { await wl.release(); wl = null; }
+  } catch (e) { wl = null; }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') wake(parts()[0] === 's'); });
+
+/* ------------------------------------------------------------ input events */
+function findSh(el) { const sess = sessById(el.dataset.s); return { sess, sh: sess && sess.shooters.find(x => x.id === el.dataset.p) }; }
+document.addEventListener('input', e => {
+  const el = e.target;
+  if (el.matches('[data-time]')) {
+    const { sess, sh } = findSh(el); if (!sh) return;
+    const v = parseFloat(String(el.value).replace(',', '.'));
+    sh.times[+el.dataset.i] = v > 0 ? Math.round(v * 100) / 100 : null;
+    if (sh.shots) sh.shots[+el.dataset.i] = null;
+    el.classList.toggle('ok', v > 0); el.classList.remove('live');
+    const w = $(`#w-${sh.id}-${el.dataset.i}`); if (w) w.innerHTML = '';
+    save();
+    if (!$('#sum').hidden) updateSum(sess, sh, sess.shooters.indexOf(sh));
+  }
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target.matches('[data-time]')) {
+    e.preventDefault();
+    const all = $$('[data-time]'), i = all.indexOf(e.target);
+    if (all[i + 1]) all[i + 1].focus(); else e.target.blur();
+  }
+});
+document.addEventListener('focusin', e => { if (e.target.matches('[data-time]')) setTimeout(() => e.target.select(), 0); });
+document.addEventListener('change', e => {
+  const el = e.target;
+  if (el.matches('[data-time]') && el.value) { const v = parseFloat(el.value); if (v > 0) el.value = v.toFixed(2); }
+  if (el.matches('[data-set]')) { S.settings[el.dataset.set] = el.checked; save(); }
+  if (el.id === 'formUrl') { S.settings.formUrl = el.value.trim(); save(); }
+  if (el.id === 'nsDate' && ns) ns.date = el.value;
+  if (el.matches('[data-pick]') && ns) ns.picked[el.dataset.pick] = el.checked;
+  if (el.matches('[data-addpick]')) addPicked[el.dataset.addpick] = el.checked;
+  if (el.id === 'restoreFile' && el.files[0]) {
+    const fr = new FileReader();
+    fr.onload = () => {
+      try { const d = JSON.parse(fr.result); if (d.v !== 1 || !Array.isArray(d.sessions)) throw 0;
+        if (confirm('Replace everything on this phone with this backup?')) { S = d; save(); render(); toast('Backup restored'); } }
+      catch (x) { toast('That file is not a MOD scoring backup'); }
+      el.value = '';
+    };
+    fr.readAsText(el.files[0]);
+  }
+});
+
+/* ------------------------------------------------------------ click events */
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-act]'); if (!b || b.disabled) return;
+  const a = b.dataset.act;
+  const sess = b.dataset.s ? sessById(b.dataset.s) : null;
+  const sh = sess && b.dataset.p ? sess.shooters.find(x => x.id === b.dataset.p) : null;
+
+  switch (a) {
+    case 'nav': if (b.dataset.to) { if (!b.dataset.to.includes('/p/')) lastStop = null; closeModal(); go(b.dataset.to); } break;
+    case 'closeModal': closeModal(); break;
+    case 'timer': timerModal(); break;
+    case 'timerConnect': await timerConnect(false); break;
+    case 'timerAll': await timerConnect(true); break;
+    case 'timerOff': timerDisconnect(); break;
+    case 'timerPull': timerPull(); break;
+    case 'copyApp': try { await navigator.clipboard.writeText(location.href.split('#')[0]); toast('App link copied'); } catch (x) { toast('Could not copy'); } break;
+    case 'aim': T.manual = { s: b.dataset.s, p: b.dataset.p, i: +b.dataset.i }; closeLock(); showTarget(); toast(T.on ? 'Next string from the timer goes here' : 'Connect the timer first'); break;
+    case 'loadRoster': {
+      b.disabled = true; const ok = await loadRoster(); b.disabled = false;
+      if (b.dataset.again === 'ns') newSessionModal();
+      else if (b.dataset.again === 'add' && sess) addShooterModal(sess);
+      else if (ok) render();
+      break;
+    }
+    case 'sync': b.disabled = true; await sync(); b.disabled = false; break;
+    case 'qr': qrModal(); break;
+    case 'copyForm': try { await navigator.clipboard.writeText(S.settings.formUrl || S.formUrlFromSheet); toast('Link copied'); } catch (x) { toast('Could not copy'); } break;
+
+    case 'newSession': ns = null; newSessionModal(); break;
+    case 'nsCourse': ns.course = b.dataset.n; ns.picked = {}; newSessionModal(); break;
+    case 'nsOlder': ns.older = true; newSessionModal(); break;
+    case 'nsAdd': { const p = readHand(); if (p) { ns.extra.push(p); newSessionModal(); } break; }
+    case 'nsDel': ns.extra.splice(+b.dataset.i, 1); newSessionModal(); break;
+    case 'nsStart': {
+      const course = S.courses.find(c => c.name === ns.course) || S.courses[0];
+      const s = { id: uid(), created: new Date().toISOString(), date: ($('#nsDate') && $('#nsDate').value) || today(), course: clone(course), shooters: [] };
+      const people = S.roster.filter(r => (!r.course || r.course === course.name) && ns.picked[r.name]).map(r => ({ name: r.name, email: r.email }));
+      const seen = new Set();
+      addShooters(s, people.concat(ns.extra).filter(p => { const k = p.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; }));
+      S.sessions.push(s); save(); ns = null; closeModal(); go('#/s/' + s.id);
+      break;
+    }
+
+    case 'addShooter': addPicked = {}; addShooterModal(sess); break;
+    case 'addPicked': {
+      const people = S.roster.filter(r => addPicked[r.name]).map(r => ({ name: r.name, email: r.email }));
+      if (!people.length) { toast('Tick at least one name'); break; }
+      addShooters(sess, people); closeModal(); render(); toast(`Added ${plural(people.length, 'shooter')}`); break;
+    }
+    case 'addHand': { const p = readHand(); if (p) { addShooters(sess, [p]); closeModal(); render(); toast('Added ' + p.name); } break; }
+    case 'editShooter': editShooterModal(sess, sh); break;
+    case 'saveShooter': { const n = $('#eName').value.trim(); if (!n) { toast('Name can’t be blank'); break; } sh.name = n; sh.email = $('#eEmail').value.trim(); save(); closeModal(); render(); break; }
+    case 'delShooter': if (confirm(`Remove ${sh.name} and their scores?`)) { sess.shooters.splice(sess.shooters.indexOf(sh), 1); save(); closeModal(); go('#/s/' + sess.id); } break;
+
+    case 'cnt': {
+      const st = sh.stops[+b.dataset.g], k = b.dataset.k, d = +b.dataset.d;
+      st[k] = Math.max(0, (st[k] || 0) + d);
+      const rds = roundsIn(sess.course, stopsOf(sess.course)[+b.dataset.g]);
+      if (st.c + st.d + st.m > rds) st[k]--;
+      st.done = true; lastStop = +b.dataset.g;
+      save(); keepScroll(render); break;
+    }
+    case 'showPen': sh.stops[+b.dataset.g].showPen = true; lastStop = +b.dataset.g; keepScroll(render); break;
+    case 'done': sh.stops[+b.dataset.g].done = true; lastStop = +b.dataset.g; save(); keepScroll(render); break;
+    case 'undone': sh.stops[+b.dataset.g].done = false; lastStop = +b.dataset.g; save(); keepScroll(render); break;
+    case 'scoreStop': if (sess.shooters[0]) { lastStop = +b.dataset.g; go(`#/s/${sess.id}/p/${sess.shooters[0].id}`); } break;
+    case 'lineStr': lineStr[sess.id] = +b.dataset.i; render(); window.scrollTo(0, 0); break;
+
+    case 'sessMenu': sessMenu(sess); break;
+    case 'exportSess': exportCSV([sess], `${sess.course.name} ${sess.date}.csv`); closeModal(); break;
+    case 'delSess': if (confirm('Delete this qualification and every score in it? This cannot be undone.')) { S.sessions.splice(S.sessions.indexOf(sess), 1); save(); closeModal(); go('#/'); } break;
+    case 'editSessCourse': courseEditor(sess.course, 'session'); ed.sid = sess.id; break;
+
+    case 'saveUrl': {
+      const v = $('#scriptUrl').value.trim();
+      if (v && !/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec/.test(v)) { toast('That doesn’t look like a web app URL ending in /exec'); break; }
+      S.settings.scriptUrl = v; save(); if (v) { await loadRoster(); } render(); break;
+    }
+    case 'viewCourse': viewCourse(+b.dataset.i); break;
+    case 'dupCourse': { const c = clone(S.courses[+b.dataset.i]); c.name += ' (copy)'; c.src = 'local'; courseEditor(c, 'library'); break; }
+    case 'newCourse': courseEditor(Object.assign({ name: 'New course', passHF: 4, src: 'local' }, VALUES, { strings: [{ desc: '', dist: '', rounds: 1, stop: true }] }), 'library'); break;
+    case 'edAdd': readEditor(); ed.c.strings.push({ desc: '', dist: '', rounds: 1, stop: false }); drawEditor(); break;
+    case 'edDel': readEditor(); if (ed.c.strings.length > 1) ed.c.strings.splice(+b.dataset.i, 1); drawEditor(); break;
+    case 'edRemove': if (confirm('Delete this quick course?')) { S.courses.splice(ed.idx, 1); save(); closeModal(); render(); } break;
+    case 'edSave': {
+      readEditor();
+      const c = ed.c;
+      if (!c.name) { toast('Give the course a name'); break; }
+      if (c.strings.some(s => !(s.rounds > 0))) { toast('Every string needs at least 1 round'); break; }
+      if (ed.target === 'session') {
+        const s = sessById(ed.sid); s.course = c; s.shooters.forEach(x => shape(c, x));
+      } else {
+        c.src = 'local';
+        if (ed.idx != null) S.courses[ed.idx] = c; else S.courses.push(c);
+      }
+      save(); closeModal(); render(); toast('Course saved'); break;
+    }
+
+    case 'exportAll': if (!S.sessions.length) { toast('Nothing to export yet'); break; } exportCSV(S.sessions, `MOD scoring ${today()}.csv`); break;
+    case 'backup': download(`MOD scoring backup ${today()}.json`, JSON.stringify(S, null, 1), 'application/json'); break;
+    case 'restore': $('#restoreFile').click(); break;
+  }
+});
+function keepScroll(fn) { const y = window.scrollY; const ls = lastStop; lastStop = null; fn(); lastStop = ls; window.scrollTo(0, y); }
+
+/* ----------------------------------------------------- AMG shot timer (BLE)
+   The AMG Lab Commander talks over the Nordic UART Bluetooth service.
+   Byte layout from the open-source AmgLabCommander app (MIT):
+     [1,5,…]           timer started (start beep)
+     [1,3,n,n,t,t,s,s,f,f,…] a shot: t = time of this shot in 1/100 s, s = split, f = first shot
+     [10..26,count,…]  reply to "REQ STRING HEX": the whole string, 2 bytes per shot
+   The time of the last shot is the string time. */
+const NUS = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+const NUS_RX = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';   // we write commands here
+const NUS_TX = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';   // timer notifies here
+const T = { dev: null, rx: null, on: false, off: false, name: '', shots: 0, last: null, split: null, lock: null, manual: null, dump: [], wantDump: false };
+
+function shotWarn(sh, i, rounds) {
+  const n = sh.shots && sh.shots[i];
+  return n != null && n !== Number(rounds) ? `<span class="pill warn shotw">Timer heard ${n} of ${rounds} shots</span>` : '';
+}
+function timerChip() {
+  return `<button class="tchip ${T.on ? 'on' : ''}" id="tchip" data-act="timer" aria-label="Shot timer"><span class="dot"></span><span id="tchipv">${T.on && T.last != null ? T.last.toFixed(2) : 'Timer'}</span></button>`;
+}
+function refreshTimerUI() {
+  const c = $('#tchip'); if (c) { c.classList.toggle('on', T.on); $('#tchipv').textContent = T.on && T.last != null ? T.last.toFixed(2) : 'Timer'; }
+  const big = $('#tbig'); if (big) big.textContent = T.last != null ? T.last.toFixed(2) : '0.00';
+  const sub = $('#tsub'); if (sub) sub.textContent = `${plural(T.shots, 'shot')}` + (T.split != null && T.shots > 1 ? ` · split ${T.split.toFixed(2)}` : '');
+  const st = $('#tstat'); if (st) st.textContent = T.on ? T.name + ' connected' : 'Not connected';
+}
+async function timerConnect(all) {
+  if (!navigator.bluetooth) { timerModal(); return; }
+  try {
+    const opts = all ? { acceptAllDevices: true, optionalServices: [NUS] }
+      : { filters: [{ namePrefix: 'AMG' }, { namePrefix: 'COMMANDER' }, { namePrefix: 'Commander' }, { services: [NUS] }], optionalServices: [NUS] };
+    const dev = await navigator.bluetooth.requestDevice(opts);
+    if (T.dev && T.dev !== dev) { T.off = true; try { T.dev.gatt.disconnect(); } catch (e) { /* ignore */ } }
+    T.dev = dev; T.off = false;
+    dev.addEventListener('gattserverdisconnected', onTimerDrop);
+    await timerAttach();
+    timerModal();
+  } catch (e) {
+    if (e && e.name === 'NotFoundError') toast('No timer picked. Turn the timer on and try again, or use “Show all Bluetooth devices”.');
+    else toast('Could not connect: ' + (e && e.message ? e.message : e));
+  }
+}
+async function timerAttach() {
+  const server = await T.dev.gatt.connect();
+  const svc = await server.getPrimaryService(NUS);
+  const tx = await svc.getCharacteristic(NUS_TX);
+  try { T.rx = await svc.getCharacteristic(NUS_RX); } catch (e) { T.rx = null; }
+  tx.addEventListener('characteristicvaluechanged', ev => {
+    const v = ev.target.value; onTimerData(new Uint8Array(v.buffer, v.byteOffset, v.byteLength));
+  });
+  await tx.startNotifications();
+  T.on = true; T.name = T.dev.name || 'Shot timer';
+  refreshTimerUI(); showTarget(); toast(T.name + ' connected');
+}
+async function onTimerDrop() {
+  T.on = false; refreshTimerUI(); showTarget();
+  if (T.off) return;
+  toast('Timer disconnected. Reconnecting…');
+  for (let k = 0; k < 3; k++) {
+    await new Promise(r => setTimeout(r, 1500));
+    try { await timerAttach(); return; } catch (e) { /* try again */ }
+  }
+  toast('Lost the timer. Tap Timer to reconnect.');
+}
+function timerDisconnect() { T.off = true; try { T.dev && T.dev.gatt.disconnect(); } catch (e) { /* ignore */ } T.on = false; refreshTimerUI(); showTarget(); timerModal(); }
+async function timerPull() {
+  if (!T.on || !T.rx) { toast('Connect the timer first'); return; }
+  T.wantDump = true;
+  try { await T.rx.writeValue(new TextEncoder().encode('REQ STRING HEX')); toast('Asking the timer for its last string…'); }
+  catch (e) { T.wantDump = false; toast('The timer didn’t accept the request'); }
+}
+const u16 = (b, i) => (b[i] << 8) | b[i + 1];
+function onTimerData(b) {
+  if (b[0] === 1 && b[1] === 5) {            // start beep: a new string begins
+    closeLock(); T.shots = 0; T.last = null; T.split = null;
+    refreshTimerUI(); showTarget(); return;
+  }
+  if (b[0] === 1 && b[1] === 3 && b.length >= 8) {   // a shot
+    const t = u16(b, 4) / 100, split = u16(b, 6) / 100;
+    if (T.last != null && t + 0.001 < T.last) { closeLock(); T.shots = 0; }  // new string without a start beep
+    T.shots++; T.last = t; T.split = split;
+    if (!T.lock) T.lock = takeTarget();
+    if (T.lock) writeTime(T.lock, t, T.shots);
+    else toast(`Timer: ${t.toFixed(2)} — open Run the line or a shooter to catch it`);
+    refreshTimerUI(); return;
+  }
+  if (b[0] >= 10 && b[0] <= 26) {            // string dump
+    if (b[0] === 10) T.dump = [];
+    for (let i = 1; i <= b[1] && i * 2 + 1 < b.length; i++) T.dump.push(u16(b, i * 2) / 100);
+    clearTimeout(T.dumpT); T.dumpT = setTimeout(applyDump, 400);
+  }
+}
+function applyDump() {
+  if (!T.wantDump) return;
+  T.wantDump = false;
+  if (!T.dump.length) { toast('The timer has no string stored'); return; }
+  const t = T.dump[T.dump.length - 1];
+  T.last = t; T.shots = T.dump.length;
+  const tgt = T.lock || takeTarget();
+  if (tgt) { writeTime(tgt, t, T.shots); toast(`Pulled ${t.toFixed(2)} (${plural(T.shots, 'shot')})`); }
+  else toast(`Timer's last string: ${t.toFixed(2)}`);
+  refreshTimerUI();
+}
+// Where should the next string go? peek = just look; take = commit (and move the line forward if needed).
+function nextTarget(take) {
+  if (T.manual) { const m = T.manual; if (take) T.manual = null; return m; }
+  const p = parts(); if (p[0] !== 's') return null;
+  const sess = sessById(p[1]); if (!sess) return null;
+  const n = sess.course.strings.length;
+  if (p[2] === 'p') {
+    const sh = sess.shooters.find(x => x.id === p[3]); if (!sh) return null;
+    const i = sh.times.findIndex(t => !(t > 0));
+    return i < 0 ? null : { s: sess.id, p: sh.id, i };
+  }
+  if (p[2] === 'line') {
+    const cur = Math.min(lineStr[sess.id] || 0, n - 1);
+    for (let i = cur; i < n; i++) {
+      const sh = sess.shooters.find(x => !(x.times[i] > 0));
+      if (sh) {
+        if (take && i !== cur) { lineStr[sess.id] = i; render(); toast(`On to string ${i + 1}`); }
+        return { s: sess.id, p: sh.id, i };
+      }
+    }
+  }
+  return null;
+}
+const takeTarget = () => nextTarget(true);
+function closeLock() {
+  if (T.lock) {
+    const sess = sessById(T.lock.s), sh = sess && sess.shooters.find(x => x.id === T.lock.p);
+    const w = $(`#w-${T.lock.p}-${T.lock.i}`);
+    if (sh && w) w.innerHTML = shotWarn(sh, T.lock.i, sess.course.strings[T.lock.i].rounds);
+  }
+  T.lock = null;
+}
+function writeTime(tg, t, shots) {
+  const sess = sessById(tg.s); const sh = sess && sess.shooters.find(x => x.id === tg.p); if (!sh) return;
+  shape(sess.course, sh);
+  sh.times[tg.i] = t;
+  sh.shots = sh.shots || []; sh.shots[tg.i] = shots;
+  save();
+  const el = $(`[data-time][data-p="${tg.p}"][data-i="${tg.i}"]`);
+  if (el && document.activeElement !== el) { el.value = t.toFixed(2); el.classList.add('ok'); }
+  const w = $(`#w-${tg.p}-${tg.i}`);
+  if (w) { const rounds = sess.course.strings[tg.i].rounds; w.innerHTML = shots >= rounds ? shotWarn(sh, tg.i, rounds) : `<span class="pill wait shotw">${shots} of ${rounds} shots</span>`; }
+  if (!$('#sum').hidden) updateSum(sess, sh, sess.shooters.indexOf(sh));
+  showTarget();
+}
+function showTarget() {
+  $$('.tin.tgt,.tin.live').forEach(x => x.classList.remove('tgt', 'live'));
+  if (!T.on) return;
+  const tg = T.lock || nextTarget(false);
+  if (!tg) return;
+  const el = $(`[data-time][data-p="${tg.p}"][data-i="${tg.i}"]`);
+  if (el) el.classList.add('tgt');
+  if (el && T.lock && el.value) el.classList.add('live');
+}
+function timerModal() {
+  const appUrl = location.href.split('#')[0];
+  if (!navigator.bluetooth) {
+    openModal(`<h2>Shot timer</h2>
+      <div class="card" style="margin-top:10px"><b>This browser can’t use Bluetooth.</b>
+      <div class="small muted" style="margin-top:6px">On iPhone, Apple blocks Bluetooth for web pages in Safari and home-screen apps. Open this app in the free <b>Bluefy</b> browser instead and the timer will work.</div></div>
+      <ol class="small muted" style="padding-left:20px;line-height:1.6">
+        <li>Install <b>Bluefy – Web BLE Browser</b> from the App Store.</li>
+        <li>Tap <b>Copy app link</b> below, then paste it into Bluefy’s address bar.</li>
+        <li>In the app, open Settings and paste your Script URL once.</li>
+      </ol>
+      <div class="two"><button class="btn blue" data-act="copyApp">Copy app link</button><button class="btn" data-act="closeModal">Close</button></div>
+      <div class="small dim" style="margin-top:10px;word-break:break-all">${esc(appUrl)}</div>`);
+    return;
+  }
+  if (!T.on) {
+    openModal(`<h2>Shot timer</h2><div class="small muted">AMG Lab Commander</div>
+      <ol class="small muted" style="padding-left:20px;line-height:1.6;margin-top:12px">
+        <li>Turn the timer on.</li><li>Tap <b>Connect timer</b> and pick it from the list.</li>
+        <li>Open <b>Run the line</b> or a shooter. Times land in the box outlined in gold.</li></ol>
+      <button class="btn primary" data-act="timerConnect">Connect timer</button>
+      <div style="margin-top:8px"><button class="btn ghost" data-act="timerAll">Show all Bluetooth devices</button></div>`);
+    return;
+  }
+  openModal(`<h2>${esc(T.name)}</h2><div class="small muted">Connected</div>
+    <div class="tbig" id="tbig">${T.last != null ? T.last.toFixed(2) : '0.00'}</div>
+    <div class="small muted" style="text-align:center" id="tsub">${plural(T.shots, 'shot')}</div>
+    <div class="card small muted" style="margin-top:14px">Each string's last-shot time goes into the gold box, then the gold box moves on. Tap a string number or a shooter's initials to aim the next string somewhere else. You can always type over a time.</div>
+    <div class="two" style="margin-top:12px"><button class="btn" data-act="timerPull">Pull last string</button><button class="btn ghost danger" data-act="timerOff">Disconnect</button></div>
+    <div style="margin-top:8px"><button class="btn blue" data-act="closeModal">Done</button></div>`);
+}
+
+/* ------------------------------------------------------------------ boot */
+render();
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+if (S.settings.scriptUrl && navigator.onLine && Date.now() - S.rosterAt > 10 * 60000) loadRoster(true).then(ok => { if (ok && !parts().length) render(); });
+</script>
+</body>
+</html>
