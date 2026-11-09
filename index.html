@@ -221,7 +221,7 @@ body.kiosk .bar{display:none}
    Hit factor = (possible points − deductions) ÷ total time of all strings
    ===================================================================== */
 
-const VERSION = '1.2.1';
+const VERSION = '1.3.0';
 const LS = 'modScore.v1';
 const CWC = 'CWC Safety Team Qualifications';
 const BRG = 'BRG Standards';
@@ -563,7 +563,7 @@ function vSettings() {
   <div class="card">
     <div class="toggle"><div><b>Email results to shooters</b><div class="small muted">Sent from your Google account when you sync</div></div><input type="checkbox" data-set="sendEmail" ${st.sendEmail ? 'checked' : ''}></div>
     <div class="toggle"><div><b>Keep screen awake while scoring</b><div class="small muted">Where the phone supports it</div></div><input type="checkbox" data-set="keepAwake" ${st.keepAwake ? 'checked' : ''}></div>
-    <label class="f"><span>Sign-in form link (filled in automatically from your Sheet)</span><input class="in-t" id="formUrl" placeholder="https://docs.google.com/forms/…" value="${esc(st.formUrl || S.formUrlFromSheet)}" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+    <div class="small muted" style="margin-top:8px">Sign-in links: ${Object.keys(S.formUrls || {}).length ? plural(Object.keys(S.formUrls).length, 'course form') + ' loaded from your Sheet' : 'tap Load to get them from your Sheet'}</div>
   </div>
   <div class="sect">Courses</div>
   <div class="list">${S.courses.map((c, i) => `<button class="li" data-act="viewCourse" data-i="${i}"><div class="main"><b>${esc(c.name)}</b>
@@ -666,7 +666,7 @@ function sessMenu(sess) {
     <button class="btn" data-act="editSessCourse" data-s="${sess.id}">Edit course for this qualification</button>
     <button class="btn" data-act="nav" data-to="#/s/${sess.id}/signin">Sign-in screen (hand to shooters)</button>
     <button class="btn" data-act="exportSess" data-s="${sess.id}">Export CSV</button>
-    <button class="btn" data-act="qr">Show sign-in QR</button>
+    <button class="btn" data-act="qr" data-c="${esc(sess.course.name)}">Show sign-in QR for this course</button>
     <button class="btn ghost danger" data-act="delSess" data-s="${sess.id}">Delete this qualification</button></div>`);
 }
 
@@ -712,14 +712,25 @@ function viewCourse(i) {
 }
 
 /* --- QR */
-function qrModal() {
-  const url = S.settings.formUrl || S.formUrlFromSheet;
-  if (!url) { openModal(`<h2>Sign-in QR</h2><div class="card muted" style="margin-top:10px">No form link yet. Connect your Google Sheet in <b>Settings</b> and tap Load, or paste the form link there.</div>`); return; }
+function qrModal(course) {
+  const links = Object.assign({}, S.formUrls || {});
+  if (!Object.keys(links).length && S.settings.formUrl) links['Sign-in'] = S.settings.formUrl;
+  const names = Object.keys(links);
+  if (!names.length) { openModal(`<h2>Sign-in QR</h2><div class="card muted" style="margin-top:10px">No sign-in links yet. Connect your Google Sheet in <b>Settings</b> and tap Load.</div>`); return; }
+  if (!course || !links[course]) {
+    if (names.length > 1) {
+      openModal(`<h2>Sign-in QR</h2><div class="small muted">Each course has its own code, so shooters can only sign in for that course.</div>
+        <div style="margin-top:12px">${names.map(n => `<button class="courseOpt" data-act="qr" data-c="${esc(n)}"><b>${esc(n)}</b><small>Show QR code</small></button>`).join('')}</div>`);
+      return;
+    }
+    course = names[0];
+  }
+  const url = links[course];
   let svg = '';
   try { const q = qrcode(0, 'M'); q.addData(url); q.make(); svg = q.createSvgTag({ cellSize: 6, margin: 2, scalable: true }); } catch (e) { svg = ''; }
-  openModal(`<h2 style="text-align:center">Scan to sign in</h2><div class="small muted" style="text-align:center">Name, email, and class — that's it.</div>
+  openModal(`<h2 style="text-align:center">Scan to sign in</h2><div class="small muted" style="text-align:center">${esc(course)}<br>Name and email — that's it.</div>
     <div class="qr">${svg}</div><div class="small dim" style="text-align:center;word-break:break-all">${esc(url)}</div>
-    <div class="two" style="margin-top:14px"><button class="btn" data-act="copyForm">Copy link</button><button class="btn" data-act="closeModal">Done</button></div>`);
+    <div class="two" style="margin-top:14px"><button class="btn" data-act="copyForm" data-u="${esc(url)}">Copy link</button><button class="btn" data-act="closeModal">Done</button></div>`);
 }
 
 /* ------------------------------------------------------------- network */
@@ -733,7 +744,7 @@ async function loadRoster(quiet) {
     if (!data.ok) throw new Error(data.error || 'Bad response');
     S.roster = data.roster || [];
     S.rosterAt = Date.now();
-    if (data.formUrl) S.formUrlFromSheet = data.formUrl;
+    if (data.formUrls) S.formUrls = data.formUrls;
     if (data.courses && data.courses.length) {
       const local = S.courses.filter(c => c.src === 'local' && !data.courses.some(x => x.name === c.name));
       S.courses = data.courses.map(c => Object.assign(c, { src: 'sheet' })).concat(local);
@@ -873,8 +884,8 @@ document.addEventListener('click', async e => {
       break;
     }
     case 'sync': b.disabled = true; await sync(); b.disabled = false; break;
-    case 'qr': qrModal(); break;
-    case 'copyForm': try { await navigator.clipboard.writeText(S.settings.formUrl || S.formUrlFromSheet); toast('Link copied'); } catch (x) { toast('Could not copy'); } break;
+    case 'qr': qrModal(b.dataset.c); break;
+    case 'copyForm': try { await navigator.clipboard.writeText(b.dataset.u); toast('Link copied'); } catch (x) { toast('Could not copy'); } break;
 
     case 'newSession': ns = null; newSessionModal(); break;
     case 'nsCourse': ns.course = b.dataset.n; ns.picked = {}; newSessionModal(); break;
