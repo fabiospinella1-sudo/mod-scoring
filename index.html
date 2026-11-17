@@ -110,6 +110,12 @@ select.mv.wide{width:100%;margin:6px 0 0;padding:12px;font-size:15px}
 .tin:focus{border-color:var(--blue2);background:#0b1838}
 .tin.ok{border-color:rgba(159,192,242,.45)}
 .tin::placeholder{color:#34466f;font-weight:600}
+.tins{display:flex;gap:8px;flex:none}
+.wl{display:block;margin-top:3px}
+.wl:empty{display:none}
+.wl::before{content:attr(data-lbl);font-size:11px;font-weight:800;color:var(--dim);margin-right:6px}
+.tins .tin{width:92px}
+.tins label{display:block;font-size:11px;font-weight:800;color:var(--dim);text-align:center;margin-bottom:3px;letter-spacing:.5px}
 .score{border:2px dashed rgba(242,184,75,.55);background:linear-gradient(180deg,rgba(242,184,75,.06),transparent)}
 .score.done{border:2px solid rgba(159,192,242,.45);background:var(--card)}
 .score .top{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px}
@@ -229,7 +235,7 @@ body.kiosk .bar{display:none}
    Hit factor = (possible points − deductions) ÷ total time of all strings
    ===================================================================== */
 
-const VERSION = '1.4.0';
+const VERSION = '1.5.0';
 const LS = 'modScore.v1';
 const CWC = 'CWC Safety Team Qualifications';
 const BRG = 'BRG Standards';
@@ -246,9 +252,9 @@ const BASE = [
 const VALUES = { a: 5, c: 3, d: 1, m: 0, missPen: 0, nsPen: 10, procPen: 10 };
 const DEFAULT_COURSES = [
   Object.assign({ name: CWC, passHF: 3.75, src: 'default' }, VALUES,
-    { strings: BASE.map((s, i) => ({ desc: s[0], dist: s[1], rounds: s[2], stop: i === 5 || i === 7 })) }),
+    { strings: BASE.map((s, i) => ({ desc: s[0], dist: s[1], rounds: s[2], stop: i === 5 || i === 7, pair: i === 0 || i === 2 })) }),
   Object.assign({ name: BRG, passHF: 4.5, src: 'default' }, VALUES,
-    { strings: BASE.slice(0, 6).map((s, i) => ({ desc: s[0], dist: s[1], rounds: s[2], stop: i === 5 })) }),
+    { strings: BASE.slice(0, 6).map((s, i) => ({ desc: s[0], dist: s[1], rounds: s[2], stop: i === 5, pair: i === 0 || i === 2 })) }),
 ];
 
 /* ---------------------------------------------------------------- utils */
@@ -293,6 +299,24 @@ function stopsOf(course) {
   course.strings.forEach((s, i) => { cur.push(i); if (s.stop || i === course.strings.length - 1) { groups.push(cur); cur = []; } });
   return groups;
 }
+// Strings fired back to back by the same shooter before the line moves on (e.g. 1+2, 3+4).
+// A string with pair = true runs together with the next one. Older saved qualifications
+// that predate this setting borrow it from the course library.
+function pairsOf(course) {
+  let st = course.strings;
+  if (!st.some(x => x.pair !== undefined)) {
+    const lib = S.courses.find(c => c.name === course.name);
+    if (lib && lib.strings.length === st.length) st = lib.strings;
+  }
+  return st.map(x => !!x.pair);
+}
+function blocksOf(course) {
+  const pr = pairsOf(course), out = [];
+  course.strings.forEach((_, i) => { if (i > 0 && pr[i - 1] && !course.strings[i - 1].stop) out[out.length - 1].push(i); else out.push([i]); });
+  return out;
+}
+const blockLabel = b => b.length > 1 ? `S${b[0] + 1}+${b[b.length - 1] + 1}` : `S${b[0] + 1}`;
+const blockName = b => b.length > 1 ? `strings ${b.slice(0, -1).map(i => i + 1).join(', ')} & ${b[b.length - 1] + 1}` : `string ${b[0] + 1}`;
 function roundsIn(course, idxs) { return idxs.reduce((t, i) => t + (Number(course.strings[i].rounds) || 0), 0); }
 function deduct(course) {
   return { c: course.a - course.c, d: course.a - course.d, m: course.a - course.m + (Number(course.missPen) || 0), ns: Number(course.nsPen) || 0, proc: Number(course.procPen) || 0 };
@@ -555,16 +579,25 @@ function shooterRow(sess, sh, r, movable) {
 /* ---------------------------------------------------------- run the line */
 let lineStr = {};
 function lineView(sess) {
-  const c = sess.course, i = Math.min(lineStr[sess.id] || 0, c.strings.length - 1), s = c.strings[i];
-  const groups = stopsOf(c), gi = groups.findIndex(g => g.includes(i));
+  const c = sess.course, blocks = blocksOf(c), i = Math.min(lineStr[sess.id] || 0, c.strings.length - 1);
+  const bi = blocks.findIndex(b => b.includes(i)), blk = blocks[bi], last = blk[blk.length - 1];
+  const groups = stopsOf(c), gi = groups.findIndex(g => g.includes(last));
   if (!sess.shooters.length) return `<div class="card empty">Add shooters first.</div>`;
-  return `<div class="chips">${c.strings.map((x, k) => `<button class="chip ${k === i ? 'on' : ''} ${x.stop || k === c.strings.length - 1 ? 'stop' : ''}" data-act="lineStr" data-s="${sess.id}" data-i="${k}">S${k + 1}</button>`).join('')}</div>
-  <div class="strCard"><div class="small muted">String ${i + 1} of ${c.strings.length} · ${esc(s.dist)} yd · ${plural(Number(s.rounds), 'round')}</div><b>${esc(s.desc)}</b></div>
-  <div class="list">${sess.shooters.map(sh => `<div class="str"><button class="av aim" data-act="aim" data-s="${sess.id}" data-p="${sh.id}" data-i="${i}" aria-label="Send next timer string here">${esc(initials(sh.name))}</button><div class="d"><b style="font-size:16px">${esc(sh.name)}</b><span id="w-${sh.id}-${i}">${shotWarn(sh, i, s.rounds)}</span></div>
-    <input class="tin ${sh.times[i] > 0 ? 'ok' : ''}" data-time data-s="${sess.id}" data-p="${sh.id}" data-i="${i}" inputmode="decimal" enterkeyhint="next" autocomplete="off" placeholder="—" value="${sh.times[i] > 0 ? sh.times[i].toFixed(2) : ''}"></div>`).join('')}</div>
-  ${(s.stop || i === c.strings.length - 1) ? `<div class="card" style="margin-top:12px;border-color:rgba(242,184,75,.5)"><b style="color:var(--warn)">Scoring stop ${gi + 1}</b><div class="small muted" style="margin:4px 0 10px">Go score the targets for strings ${groups[gi][0] + 1}–${groups[gi][groups[gi].length - 1] + 1}.</div>
+  const descs = blk.map(k => c.strings[k]);
+  const same = descs.every(x => x.desc === descs[0].desc && x.dist === descs[0].dist && String(x.rounds) === String(descs[0].rounds));
+  const head = blk.length > 1
+    ? `<div class="small muted">${blockName(blk).replace(/^s/, 'S')} · back to back, each shooter fires both before the next one</div>` +
+      (same ? `<b>${esc(descs[0].desc)}</b><div class="small muted" style="margin-top:4px">${esc(descs[0].dist)} yd · ${plural(Number(descs[0].rounds), 'round')} each</div>`
+        : descs.map((x, k) => `<div style="margin-top:6px"><b>S${blk[k] + 1}: ${esc(x.desc)}</b><div class="small muted">${esc(x.dist)} yd · ${plural(Number(x.rounds), 'round')}</div></div>`).join(''))
+    : `<div class="small muted">String ${blk[0] + 1} of ${c.strings.length} · ${esc(descs[0].dist)} yd · ${plural(Number(descs[0].rounds), 'round')}</div><b>${esc(descs[0].desc)}</b>`;
+  const box = (sh, k) => `<input class="tin ${sh.times[k] > 0 ? 'ok' : ''}" data-time data-s="${sess.id}" data-p="${sh.id}" data-i="${k}" inputmode="decimal" enterkeyhint="next" autocomplete="off" placeholder="—" value="${sh.times[k] > 0 ? sh.times[k].toFixed(2) : ''}">`;
+  return `<div class="chips">${blocks.map((b, k) => { const e = b[b.length - 1]; return `<button class="chip ${k === bi ? 'on' : ''} ${c.strings[e].stop || e === c.strings.length - 1 ? 'stop' : ''}" data-act="lineStr" data-s="${sess.id}" data-i="${b[0]}">${blockLabel(b)}</button>`; }).join('')}</div>
+  <div class="strCard">${head}</div>
+  <div class="list">${sess.shooters.map(sh => `<div class="str"><button class="av aim" data-act="aim" data-s="${sess.id}" data-p="${sh.id}" data-i="${blk.find(k => !(sh.times[k] > 0)) ?? blk[0]}" aria-label="Send next timer string here">${esc(initials(sh.name))}</button><div class="d"><b style="font-size:16px">${esc(sh.name)}</b>${blk.map(k => `<span class="${blk.length > 1 ? 'wl' : ''}" data-lbl="S${k + 1}" id="w-${sh.id}-${k}">${shotWarn(sh, k, c.strings[k].rounds)}</span>`).join('')}</div>
+    ${blk.length > 1 ? `<div class="tins">${blk.map(k => `<div><label>S${k + 1}</label>${box(sh, k)}</div>`).join('')}</div>` : box(sh, blk[0])}</div>`).join('')}</div>
+  ${(c.strings[last].stop || last === c.strings.length - 1) ? `<div class="card" style="margin-top:12px;border-color:rgba(242,184,75,.5)"><b style="color:var(--warn)">Scoring stop ${gi + 1}</b><div class="small muted" style="margin:4px 0 10px">Go score the targets for strings ${groups[gi][0] + 1}–${groups[gi][groups[gi].length - 1] + 1}.</div>
     <button class="btn blue" data-act="scoreStop" data-s="${sess.id}" data-g="${gi}">Score stop ${gi + 1}</button></div>` : ''}
-  ${i < c.strings.length - 1 ? `<div style="margin-top:12px"><button class="btn" data-act="lineStr" data-s="${sess.id}" data-i="${i + 1}">Next: String ${i + 2} ›</button></div>` : ''}`;
+  ${bi < blocks.length - 1 ? `<div style="margin-top:12px"><button class="btn" data-act="lineStr" data-s="${sess.id}" data-i="${blocks[bi + 1][0]}">Next: ${blockName(blocks[bi + 1]).replace(/^s/, 'S')} ›</button></div>` : ''}`;
 }
 function lineAfter() { const first = $$('.tin').find(x => !x.value); if (first && !('ontouchstart' in window)) first.focus(); }
 
@@ -816,7 +849,8 @@ function drawEditor() {
     ${c.strings.map((s, i) => `<div class="edStr"><div class="row"><b class="grow">String ${i + 1}</b><button class="linkbtn danger" data-act="edDel" data-i="${i}">Remove</button></div>
       <textarea class="in-t" data-eds="${i}" data-f="desc" placeholder="Description">${esc(s.desc)}</textarea>
       <div class="row"><input class="in-t" data-eds="${i}" data-f="dist" placeholder="Yards" value="${esc(s.dist)}"><input class="in-t num" inputmode="numeric" data-eds="${i}" data-f="rounds" placeholder="Rounds" value="${esc(s.rounds)}"></div>
-      <label class="check" style="padding:10px 0 2px;border:0;min-height:0"><input type="checkbox" data-eds="${i}" data-f="stop" ${s.stop ? 'checked' : ''}><span>Score targets after this string</span></label></div>`).join('')}
+      <label class="check" style="padding:10px 0 2px;border:0;min-height:0"><input type="checkbox" data-eds="${i}" data-f="stop" ${s.stop ? 'checked' : ''}><span>Score targets after this string</span></label>
+      ${i < c.strings.length - 1 ? `<label class="check" style="padding:6px 0 2px;border:0;min-height:0"><input type="checkbox" data-eds="${i}" data-f="pair" ${s.pair ? 'checked' : ''}><span>Run the line: same shooter fires string ${i + 2} right after this one</span></label>` : ''}</div>`).join('')}
     <div style="margin-top:10px"><button class="btn" data-act="edAdd">+ Add string</button></div>
     <div style="margin-top:16px"><button class="btn primary" data-act="edSave">Save course</button></div>
     ${ed.target !== 'session' && ed.idx != null ? `<div style="margin-top:10px"><button class="btn ghost danger" data-act="edRemove">Delete this course</button></div>` : ''}`);
@@ -824,7 +858,7 @@ function drawEditor() {
 function readEditor() {
   const c = ed.c;
   $$('[data-ed]').forEach(el => { const k = el.dataset.ed; c[k] = k === 'name' ? el.value.trim() : Number(el.value) || 0; });
-  $$('[data-eds]').forEach(el => { const s = c.strings[+el.dataset.eds], f = el.dataset.f; s[f] = f === 'stop' ? el.checked : f === 'rounds' ? Math.max(0, parseInt(el.value, 10) || 0) : el.value; });
+  $$('[data-eds]').forEach(el => { const s = c.strings[+el.dataset.eds], f = el.dataset.f; s[f] = (f === 'stop' || f === 'pair') ? el.checked : f === 'rounds' ? Math.max(0, parseInt(el.value, 10) || 0) : el.value; });
 }
 function viewCourse(i) {
   const c = S.courses[i];
@@ -1212,12 +1246,15 @@ function nextTarget(take) {
     return i < 0 ? null : { s: sess.id, p: sh.id, i };
   }
   if (p[2] === 'line') {
-    const cur = Math.min(lineStr[sess.id] || 0, n - 1);
-    for (let i = cur; i < n; i++) {
-      const sh = sess.shooters.find(x => !(x.times[i] > 0));
-      if (sh) {
-        if (take && i !== cur) { lineStr[sess.id] = i; render(); toast(`On to string ${i + 1}`); }
-        return { s: sess.id, p: sh.id, i };
+    const cur = Math.min(lineStr[sess.id] || 0, n - 1), blocks = blocksOf(sess.course);
+    const start = blocks.findIndex(b => b.includes(cur));
+    for (let bi = start; bi < blocks.length; bi++) {
+      for (const sh of sess.shooters) {
+        const i = blocks[bi].find(k => !(sh.times[k] > 0));
+        if (i !== undefined) {
+          if (take && bi !== start) { lineStr[sess.id] = blocks[bi][0]; render(); toast(`On to ${blockName(blocks[bi])}`); }
+          return { s: sess.id, p: sh.id, i };
+        }
       }
     }
   }
@@ -1239,7 +1276,7 @@ function writeTime(tg, t, shots) {
   sh.shots = sh.shots || []; sh.shots[tg.i] = shots;
   save();
   const el = $(`[data-time][data-p="${tg.p}"][data-i="${tg.i}"]`);
-  if (el && document.activeElement !== el) { el.value = t.toFixed(2); el.classList.add('ok'); }
+  if (el && (document.activeElement !== el || !el.value || el.classList.contains('tgt'))) { el.value = t.toFixed(2); el.classList.add('ok'); }
   const w = $(`#w-${tg.p}-${tg.i}`);
   if (w) { const rounds = sess.course.strings[tg.i].rounds; w.innerHTML = shots >= rounds ? shotWarn(sh, tg.i, rounds) : `<span class="pill wait shotw">${shots} of ${rounds} shots</span>`; }
   if (!$('#sum').hidden) updateSum(sess, sh, sess.shooters.indexOf(sh));
