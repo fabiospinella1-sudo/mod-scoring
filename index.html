@@ -83,6 +83,14 @@ button{cursor:pointer;border:0;background:none}
 .li .side{text-align:right;flex:none}
 .li .side .hf{font-size:20px;font-weight:800}
 .chev{color:var(--dim);font-size:22px;flex:none}
+.mvrow{display:flex;align-items:center;border-bottom:1px solid var(--line)}
+.mvrow:last-child{border-bottom:0}
+.mvrow .li{border-bottom:0;flex:1;min-width:0}
+select.mv{flex:none;margin-right:12px;width:88px;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:8px 6px;font-size:13px;font-weight:700;color:var(--blue2)}
+select.mv.wide{width:100%;margin:6px 0 0;padding:12px;font-size:15px}
+.letter{font-size:13px;font-weight:800;color:var(--blue2);letter-spacing:1px;padding:14px 4px 6px}
+.hint{display:flex;align-items:center;gap:10px;margin:0 0 12px;padding:10px 12px;border-radius:12px;background:rgba(255,255,255,.05);border:1px solid var(--line);font-size:13px;color:var(--muted)}
+.hint .grow{flex:1}
 .av{width:38px;height:38px;border-radius:50%;background:var(--card2);display:grid;place-items:center;font-weight:800;color:var(--blue2);flex:none}
 
 /* tabs */
@@ -221,7 +229,7 @@ body.kiosk .bar{display:none}
    Hit factor = (possible points − deductions) ÷ total time of all strings
    ===================================================================== */
 
-const VERSION = '1.3.0';
+const VERSION = '1.4.0';
 const LS = 'modScore.v1';
 const CWC = 'CWC Safety Team Qualifications';
 const BRG = 'BRG Standards';
@@ -331,12 +339,65 @@ function parts() { return location.hash.replace(/^#\/?/, '').split('/').filter(B
 window.addEventListener('hashchange', () => { render(); window.scrollTo(0, 0); });
 const sessById = id => S.sessions.find(s => s.id === id);
 
+/* --------------------------------------------- upcoming, archive, auto-placing
+   A qualification dated today or later is "upcoming"; earlier ones live in the Archive.
+   Every sign-up from the Sheet goes into the soonest upcoming qualification for its course,
+   once. After that it's yours to move or remove. It never gets put back. */
+const dayStr = ts => { const d = new Date(ts); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+const isPast = sess => sess.date < today();
+const byWhen = (a, b) => (a.date + a.created).localeCompare(b.date + b.created);
+const upcomingSessions = () => S.sessions.filter(s => !isPast(s)).sort(byWhen);
+const rKey = r => [String(r.name).toLowerCase(), r.course || '', r.ts || 0].join('|');
+function autoPlace() {
+  S.placed = S.placed || {};
+  const t = today(), added = {};
+  S.roster.forEach(r => {
+    const k = rKey(r);
+    if (S.placed[k] || !r.course || !r.name) return;
+    const day = r.ts ? dayStr(r.ts) : t, nm = String(r.name).toLowerCase();
+    const same = S.sessions.filter(s => s.course.name === r.course);
+    // Already in a qualification for this course on or after the day they signed in.
+    if (same.some(s => s.date >= day && s.shooters.some(x => x.name.toLowerCase() === nm))) { S.placed[k] = 'had'; return; }
+    const target = same.filter(s => s.date >= t && s.date >= day).sort(byWhen)[0];
+    if (!target) return; // No upcoming qualification yet. It'll be offered when you create one.
+    // Stale sign-in: it was for an earlier qualification of this course.
+    const prev = same.map(s => s.date).filter(d => d < target.date).sort().pop();
+    if ((prev && day <= prev) || (!prev && r.ts && Date.now() - r.ts > 30 * 86400000)) { S.placed[k] = 'old'; return; }
+    addShooters(target, [{ name: r.name, email: r.email }]);
+    S.placed[k] = target.id;
+    added[target.id] = (added[target.id] || 0) + 1;
+  });
+  save();
+  return Object.keys(added).map(id => { const s = sessById(id); return `${plural(added[id], 'new sign-up')} → ${s.course.name}, ${prettyDate(s.date)}`; });
+}
+function moveSelect(sess, sh, wide) {
+  const opts = upcomingSessions().filter(s => s.id !== sess.id);
+  if (!opts.length) return '';
+  return `<select class="mv ${wide ? 'wide' : ''}" data-mv data-s="${sess.id}" data-p="${sh.id}" aria-label="Move ${esc(sh.name)} to another qualification">
+    <option value="">${wide ? 'Move to another qualification…' : 'Move'}</option>
+    ${opts.map(s => `<option value="${s.id}">${esc(s.course.name)} · ${prettyDate(s.date)}</option>`).join('')}</select>`;
+}
+function moveShooter(from, sh, to) {
+  if (to.shooters.some(x => x.name.toLowerCase() === sh.name.toLowerCase())) { toast(`${sh.name} is already in that one`); return false; }
+  const r = calc(from.course, sh), hasData = r.timed || r.scored;
+  const otherCourse = from.course.name !== to.course.name;
+  if (hasData && !confirm(otherCourse ? `${sh.name} has times or scores. Moving to a different course clears them. Move anyway?` : `${sh.name} already has times or scores. Move them with their scores?`)) return false;
+  from.shooters.splice(from.shooters.indexOf(sh), 1);
+  if (otherCourse) { sh.times = []; sh.stops = []; sh.shots = []; }
+  delete sh.synced;
+  to.shooters.push(shape(to.course, sh));
+  save();
+  toast(`Moved ${sh.name} to ${to.course.name}, ${prettyDate(to.date)}`);
+  return true;
+}
+
 function render() {
   const p = parts();
   $('#sum').hidden = true; $('#app').classList.remove('has-sum');
   document.body.classList.toggle('kiosk', p[0] === 's' && p[2] === 'signin');
   let out;
   if (p[0] === 'settings') out = vSettings();
+  else if (p[0] === 'archive') out = p[1] === 'p' && p[2] ? vPerson(decodeURIComponent(p[2])) : vArchive(p[1] === 'q' ? 'q' : 'az');
   else if (p[0] === 's' && sessById(p[1])) {
     const sess = sessById(p[1]);
     if (p[2] === 'signin') out = vSignin(sess);
@@ -360,7 +421,8 @@ function bar(title, sub, back, right) {
 function vHome() {
   const pend = allPending();
   const roster = S.roster.length;
-  const sessions = S.sessions.slice().sort((a, b) => (b.date + b.created).localeCompare(a.date + a.created));
+  const sessions = upcomingSessions();
+  const pastN = S.sessions.filter(isPast).length;
   const body = `
   <div class="hero"><img src="logo.png" alt=""><div><h1>Range Scoring</h1><p>My Own Defender</p></div></div>
   <div class="status">
@@ -372,19 +434,72 @@ function vHome() {
       <div class="small dim" style="margin-top:6px">${S.settings.sendEmail ? 'Emails results' : 'Email is off'}</div></div>
   </div>
   <div style="margin-top:16px"><button class="btn primary" data-act="newSession">+ New qualification</button></div>
-  <div class="sect">Qualifications</div>
-  ${sessions.length ? `<div class="list">${sessions.map(s => {
-    const res = s.shooters.map(sh => calc(s.course, sh));
-    const done = res.filter(r => r.complete).length, passed = res.filter(r => r.pass).length;
-    return `<button class="li" data-act="nav" data-to="#/s/${s.id}"><div class="main"><b>${esc(s.course.name)}</b>
-      <small>${prettyDate(s.date)} · ${plural(s.shooters.length, 'shooter')} · ${done} scored · ${passed} passed</small></div><span class="chev">›</span></button>`;
-  }).join('')}</div>` : `<div class="card empty">No qualifications yet.<br>Tap <b>New qualification</b> to start.</div>`}
+  <div class="sect">Upcoming</div>
+  ${sessions.length ? `<div class="list">${sessions.map(sessLi).join('')}</div>` : `<div class="card empty">Nothing scheduled.<br>Tap <b>New qualification</b> to set up the next one. New sign-ups for that course go into it automatically.</div>`}
+  ${pastN ? `<div style="margin-top:10px"><button class="btn" data-act="nav" data-to="#/archive">Archive · ${plural(pastN, 'past qualification')}</button></div>` : ''}
   <div class="two" style="margin-top:18px">
     <button class="btn" data-act="qr">${ICON.qr}<span>Sign-in QR</span></button>
     <button class="btn" data-act="nav" data-to="#/settings">${ICON.gear}<span>Settings</span></button>
   </div>
   ${!S.settings.scriptUrl ? `<div class="card small muted" style="margin-top:14px">Not connected to your Google Sheet yet. You can still score — results stay on this phone. Add your Script URL in <b>Settings</b> to load sign-ups and sync.</div>` : ''}`;
   return { bar: bar('MOD Range Scoring', 'Hit factor qualifications', null, `<button class="iconbtn" data-act="nav" data-to="#/settings" aria-label="Settings">${ICON.gear}</button>`), body };
+}
+
+function sessLi(s) {
+  const res = s.shooters.map(sh => calc(s.course, sh));
+  const done = res.filter(r => r.complete).length, passed = res.filter(r => r.pass).length;
+  return `<button class="li" data-act="nav" data-to="#/s/${s.id}"><div class="main"><b>${esc(s.course.name)}</b>
+    <small>${prettyDate(s.date)} · ${plural(s.shooters.length, 'shooter')} · ${done} scored · ${passed} passed</small></div><span class="chev">›</span></button>`;
+}
+
+/* --------------------------------------------------------------- archive */
+function pastPeople() {
+  // One person = same email. Rows with no email join the person with the same name.
+  const m = new Map(), past = S.sessions.filter(isPast);
+  const nameToEmail = {};
+  past.forEach(sess => sess.shooters.forEach(sh => { const e = (sh.email || '').trim().toLowerCase(); if (e) nameToEmail[sh.name.trim().toLowerCase()] = e; }));
+  past.forEach(sess => sess.shooters.forEach(sh => {
+    const n = sh.name.trim().toLowerCase(), k = (sh.email || '').trim().toLowerCase() || nameToEmail[n] || 'name:' + n;
+    if (!m.has(k)) m.set(k, { key: k, name: sh.name.trim(), rows: [] });
+    m.get(k).rows.push({ sess, sh, r: calc(sess.course, sh) });
+  }));
+  m.forEach(p => p.rows.sort((a, b) => byWhen(b.sess, a.sess)));
+  const last = n => n.split(/\s+/).pop().toLowerCase();
+  return [...m.values()].sort((a, b) => last(a.name).localeCompare(last(b.name)) || a.name.localeCompare(b.name));
+}
+function resultPill(r) {
+  return r.complete ? `<div class="hf num">${fmtHF(r.hf)}</div><span class="pill ${r.pass ? 'pass' : 'fail'}">${r.pass ? 'PASS' : 'BELOW'}</span>` : `<span class="pill wait">NOT SCORED</span>`;
+}
+function vArchive(view) {
+  const tabs = `<div class="tabs" style="grid-template-columns:1fr 1fr"><button class="${view === 'az' ? 'on' : ''}" data-act="nav" data-to="#/archive">Shooters A–Z</button>
+    <button class="${view === 'q' ? 'on' : ''}" data-act="nav" data-to="#/archive/q">Qualifications</button></div>`;
+  let body = tabs;
+  if (view === 'q') {
+    const past = S.sessions.filter(isPast).sort((a, b) => byWhen(b, a));
+    body += past.length ? `<div class="list">${past.map(sessLi).join('')}</div>` : `<div class="card empty">No past qualifications yet.</div>`;
+  } else {
+    const people = pastPeople();
+    if (!people.length) body += `<div class="card empty">No past qualifications yet. Once a qualification date passes, everyone in it shows up here.</div>`;
+    let letter = '';
+    const groups = [];
+    people.forEach(p => { const L = (p.name.split(/\s+/).pop()[0] || '#').toUpperCase(); if (L !== letter) { letter = L; groups.push({ L, list: [] }); } groups[groups.length - 1].list.push(p); });
+    body += groups.map(g => `<div class="letter">${esc(g.L)}</div><div class="list">${g.list.map(p => {
+      const lastRow = p.rows[0];
+      return `<button class="li" data-act="nav" data-to="#/archive/p/${encodeURIComponent(p.key)}"><div class="av">${esc(initials(p.name))}</div>
+        <div class="main"><b>${esc(p.name)}</b><small>${plural(p.rows.length, 'qualification')} · last ${esc(lastRow.sess.course.name)}, ${prettyDate(lastRow.sess.date)}</small></div>
+        <div class="side">${resultPill(lastRow.r)}</div></button>`;
+    }).join('')}</div>`).join('');
+  }
+  return { bar: bar('Archive', 'Past qualifications', '#/'), body };
+}
+function vPerson(key) {
+  const p = pastPeople().find(x => x.key === key);
+  if (!p) return vArchive('az');
+  const passes = p.rows.filter(x => x.r.pass).length;
+  const body = `<div class="small muted" style="margin:14px 0 10px">${esc(p.rows[0].sh.email || 'No email on file')} · ${passes} of ${plural(p.rows.length, 'qualification')} passed</div>
+    <div class="list">${p.rows.map(x => `<button class="li" data-act="nav" data-to="#/s/${x.sess.id}/p/${x.sh.id}"><div class="main"><b>${esc(x.sess.course.name)}</b>
+      <small class="num">${prettyDate(x.sess.date)}${x.r.complete ? ` · ${x.r.points}/${x.r.possible} pts · ${x.r.totalTime.toFixed(2)} s` : ''}</small></div><div class="side">${resultPill(x.r)}</div></button>`).join('')}</div>`;
+  return { bar: bar(p.name, 'Archive', '#/archive'), body };
 }
 
 /* --------------------------------------------------------------- session */
@@ -412,21 +527,29 @@ function vSession(sess, tab) {
         : `<div class="card empty">Nobody is fully scored yet.</div>`}
       ${rest.length ? `<div class="sect">In progress</div><div class="list">${rest.map(x => shooterRow(sess, x.sh, x.r)).join('')}</div>` : ''}`;
   } else {
-    body += sess.shooters.length ? `<div class="list">${res.map(x => shooterRow(sess, x.sh, x.r)).join('')}</div>`
+    if (!isPast(sess)) {
+      const first = upcomingSessions().find(s => s.course.name === c.name);
+      body += `<div class="hint"><div class="grow">${first && first.id === sess.id ? 'New sign-ups for this course land here automatically when you tap Refresh or Load.'
+        : `New sign-ups for this course go to ${first ? prettyDate(first.date) : 'the soonest one'} first. Use <b>Move</b> to shift people here.`}</div>
+        <button class="linkbtn" data-act="loadRoster">Refresh</button></div>`;
+    }
+    body += sess.shooters.length ? `<div class="list">${res.map(x => shooterRow(sess, x.sh, x.r, true)).join('')}</div>`
       : `<div class="card empty">No shooters yet.</div>`;
     body += `<div class="two" style="margin-top:12px"><button class="btn" data-act="addShooter" data-s="${sess.id}">+ Add shooter</button><button class="btn" data-act="nav" data-to="#/s/${sess.id}/signin">Sign-in screen</button></div>`;
     const pend = pendingIn(sess).length;
     if (pend) body += `<div style="margin-top:10px"><button class="btn primary" data-act="sync">Sync ${plural(pend, 'result')}</button></div>`;
   }
-  return { bar: bar(c.name, prettyDate(sess.date), '#/', timerChip() + `<button class="iconbtn" data-act="sessMenu" data-s="${sess.id}" aria-label="More">${ICON.dots}</button>`), body, after: tab === 'line' ? () => lineAfter(sess) : null };
+  return { bar: bar(c.name, prettyDate(sess.date), isPast(sess) ? '#/archive/q' : '#/', timerChip() + `<button class="iconbtn" data-act="sessMenu" data-s="${sess.id}" aria-label="More">${ICON.dots}</button>`), body, after: tab === 'line' ? () => lineAfter(sess) : null };
 }
-function shooterRow(sess, sh, r) {
+function shooterRow(sess, sh, r, movable) {
   const status = r.complete ? `<div class="hf num">${fmtHF(r.hf)}</div><span class="pill ${r.pass ? 'pass' : 'fail'}">${r.pass ? 'PASS' : 'BELOW'}</span>`
     : `<span class="pill wait num">${r.timed}/${sh.times.length} times</span><div class="small dim" style="margin-top:4px">${r.scored}/${r.stops} scored</div>`;
   const synced = r.complete && sh.synced === sig(sess, sh);
-  return `<button class="li" data-act="nav" data-to="#/s/${sess.id}/p/${sh.id}"><div class="av">${esc(initials(sh.name))}</div>
+  const row = `<button class="li" data-act="nav" data-to="#/s/${sess.id}/p/${sh.id}"><div class="av">${esc(initials(sh.name))}</div>
     <div class="main"><b>${esc(sh.name)}</b><small>${esc(sh.email || 'No email')}${synced ? ' · synced' : ''}</small></div>
     <div class="side">${status}</div></button>`;
+  const mv = movable ? moveSelect(sess, sh) : '';
+  return mv ? `<div class="mvrow">${row}${mv}</div>` : row;
 }
 
 /* ---------------------------------------------------------- run the line */
@@ -601,6 +724,7 @@ function newSessionModal() {
   const isNew = r => r.ts >= cutoff && !sameDay.has(r.name.toLowerCase());
   const recent = list.filter(isNew), older = list.filter(r => !isNew(r));
   recent.forEach(r => { if (ns.picked[r.name] === undefined) ns.picked[r.name] = true; });
+  ns.offered = list.filter(r => r.ts >= cutoff).map(rKey);
   const shown = ns.older ? recent.concat(older) : recent;
   const rule = prevDate ? `Checked: signed in since the last one on ${prettyDate(prevDate)}` : 'Checked: signed in during the last 14 days';
   openModal(`<h2>New qualification</h2>
@@ -657,6 +781,7 @@ function editShooterModal(sess, sh) {
     <label class="f"><span>Name</span><input class="in-t" id="eName" value="${esc(sh.name)}" autocapitalize="words"></label>
     <label class="f"><span>Email</span><input class="in-t" id="eEmail" type="email" value="${esc(sh.email || '')}" autocapitalize="off"></label>
     <div style="margin-top:16px"><button class="btn blue" data-act="saveShooter" data-s="${sess.id}" data-p="${sh.id}">Save</button></div>
+    ${moveSelect(sess, sh, true)}
     <div style="margin-top:10px"><button class="btn ghost danger" data-act="delShooter" data-s="${sess.id}" data-p="${sh.id}">Remove from this qualification</button></div>`);
 }
 
@@ -750,8 +875,10 @@ async function loadRoster(quiet) {
       S.courses = data.courses.map(c => Object.assign(c, { src: 'sheet' })).concat(local);
     }
     save();
-    if (!quiet) toast(`Loaded ${plural(S.roster.length, 'sign-up')}` + ((data.courses || []).length ? ` and ${plural(data.courses.length, 'course')}` : ''));
-    return true;
+    const placed = autoPlace();
+    if (placed.length) toast('Added ' + placed.join(' · '));
+    else if (!quiet) toast(`Loaded ${plural(S.roster.length, 'sign-up')}` + ((data.courses || []).length ? ` and ${plural(data.courses.length, 'course')}` : ''));
+    return placed.length ? 'added' : true;
   } catch (e) {
     if (!quiet) toast('Could not reach your Sheet. Check the Script URL.');
     return false;
@@ -847,6 +974,11 @@ document.addEventListener('change', e => {
   if (el.id === 'nsDate' && ns && el.value) { ns.date = el.value; ns.picked = {}; newSessionModal(); }
   if (el.matches('[data-pick]') && ns) ns.picked[el.dataset.pick] = el.checked;
   if (el.matches('[data-addpick]')) addPicked[el.dataset.addpick] = el.checked;
+  if (el.matches('[data-mv]') && el.value) {
+    const from = sessById(el.dataset.s), sh = from && from.shooters.find(x => x.id === el.dataset.p), to = sessById(el.value);
+    if (from && sh && to && moveShooter(from, sh, to)) { closeModal(); if (parts()[2] === 'p') go('#/s/' + from.id); else keepScroll(render); }
+    else el.value = '';
+  }
   if (el.id === 'restoreFile' && el.files[0]) {
     const fr = new FileReader();
     fr.onload = () => {
@@ -898,6 +1030,8 @@ document.addEventListener('click', async e => {
       const people = S.roster.filter(r => (!r.course || r.course === course.name) && ns.picked[r.name]).map(r => ({ name: r.name, email: r.email }));
       const seen = new Set();
       addShooters(s, people.concat(ns.extra).filter(p => { const k = p.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; }));
+      S.placed = S.placed || {};
+      (ns.offered || []).forEach(k => { if (!S.placed[k]) S.placed[k] = s.id; });
       S.sessions.push(s); save(); ns = null; closeModal(); go('#/s/' + s.id);
       break;
     }
@@ -1155,7 +1289,7 @@ function timerModal() {
 /* ------------------------------------------------------------------ boot */
 render();
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
-if (S.settings.scriptUrl && navigator.onLine && Date.now() - S.rosterAt > 10 * 60000) loadRoster(true).then(ok => { if (ok && !parts().length) render(); });
+if (S.settings.scriptUrl && navigator.onLine && Date.now() - S.rosterAt > 10 * 60000) loadRoster(true).then(ok => { if (ok === 'added' || (ok && !parts().length)) render(); });
 </script>
 </body>
 </html>

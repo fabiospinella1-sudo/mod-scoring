@@ -3,7 +3,7 @@
    is signal) but gives up after 2.5 seconds and uses the saved copy, so it still opens
    instantly at a range with no signal. Everything else (logo, icons, QR library) comes
    from the saved copy and is quietly refreshed in the background. */
-const CACHE = 'mod-scoring-v5';
+const CACHE = 'mod-scoring-v6';
 const FILES = ['./', 'index.html', 'qrcode.min.js', 'logo.png', 'manifest.webmanifest',
   'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png'];
 
