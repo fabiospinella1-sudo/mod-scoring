@@ -143,6 +143,10 @@ select.mv.wide{width:100%;margin:6px 0 0;padding:12px;font-size:15px}
 .ib:disabled{opacity:.3}
 .ib.danger{color:#ff8a8f;border-color:rgba(212,36,47,.5)}
 .listhead{display:flex;align-items:center;justify-content:space-between;margin:2px 2px 6px}
+[data-drag]{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;background:var(--card);position:relative}
+[data-drag].dragging{z-index:5;box-shadow:0 10px 28px rgba(0,0,0,.55);outline:2px solid var(--blue2);border-radius:12px}
+.list.sorting [data-drag]:not(.dragging){transition:none}
+.grip{flex:none;width:28px;text-align:center;color:var(--dim);font-size:20px;letter-spacing:-2px;touch-action:none;cursor:grab}
 
 /* sticky summary */
 .sum{position:fixed;left:0;right:0;bottom:0;z-index:15;background:rgba(13,27,64,.97);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid var(--line);padding:10px 12px calc(10px + var(--safeb))}
@@ -245,7 +249,7 @@ body.kiosk .bar{display:none}
    Hit factor = (possible points − deductions) ÷ total time of all strings
    ===================================================================== */
 
-const VERSION = '1.6.0';
+const VERSION = '1.6.1';
 const LS = 'modScore.v1';
 const CWC = 'CWC Safety Team Qualifications';
 const BRG = 'BRG Standards';
@@ -568,12 +572,10 @@ function vSession(sess, tab) {
         <button class="linkbtn" data-act="loadRoster">Refresh</button></div>`;
     }
     const editing = listEdit === sess.id;
-    if (sess.shooters.length) body += `<div class="listhead"><div class="small muted">${plural(sess.shooters.length, 'shooter')} · line order${editing ? ': use ▲ ▼ to move, ✕ to remove' : ''}</div>
-      <button class="linkbtn" data-act="listEdit" data-s="${sess.id}">${editing ? 'Done' : 'Reorder / remove'}</button></div>`;
+    if (sess.shooters.length) body += `<div class="listhead"><div class="small muted">${plural(sess.shooters.length, 'shooter')} · line order · hold a name and drag to move</div>
+      <button class="linkbtn" data-act="listEdit" data-s="${sess.id}">${editing ? 'Done' : 'Remove'}</button></div>`;
     body += !sess.shooters.length ? `<div class="card empty">No shooters yet.</div>`
-      : editing ? `<div class="list">${sess.shooters.map((sh, i) => `<div class="erow"><div class="pos">${i + 1}</div><div class="main"><b>${esc(sh.name)}</b><small>${esc(sh.email || 'No email')}</small></div>
-          <button class="ib" data-act="shMove" data-d="-1" data-s="${sess.id}" data-p="${sh.id}" ${i === 0 ? 'disabled' : ''} aria-label="Move ${esc(sh.name)} up">▲</button>
-          <button class="ib" data-act="shMove" data-d="1" data-s="${sess.id}" data-p="${sh.id}" ${i === sess.shooters.length - 1 ? 'disabled' : ''} aria-label="Move ${esc(sh.name)} down">▼</button>
+      : editing ? `<div class="list">${sess.shooters.map((sh, i) => `<div class="erow" data-drag="${sess.id}" data-p="${sh.id}"><div class="grip" aria-hidden="true">⋮⋮</div><div class="pos">${i + 1}</div><div class="main"><b>${esc(sh.name)}</b><small>${esc(sh.email || 'No email')}</small></div>
           <button class="ib danger" data-act="shDel" data-s="${sess.id}" data-p="${sh.id}" aria-label="Remove ${esc(sh.name)}">✕</button></div>`).join('')}</div>`
       : `<div class="list">${res.map(x => shooterRow(sess, x.sh, x.r, true)).join('')}</div>`;
     body += `<div class="two" style="margin-top:12px"><button class="btn" data-act="addShooter" data-s="${sess.id}">+ Add shooter</button><button class="btn" data-act="nav" data-to="#/s/${sess.id}/signin">Sign-in screen</button></div>`;
@@ -589,8 +591,9 @@ function shooterRow(sess, sh, r, movable) {
   const row = `<button class="li" data-act="nav" data-to="#/s/${sess.id}/p/${sh.id}"><div class="av">${esc(initials(sh.name))}</div>
     <div class="main"><b>${esc(sh.name)}</b><small>${esc(sh.email || 'No email')}${synced ? ' · synced' : ''}</small></div>
     <div class="side">${status}</div></button>`;
-  const mv = movable ? moveSelect(sess, sh) : '';
-  return mv ? `<div class="mvrow">${row}${mv}</div>` : row;
+  if (!movable) return row;
+  const mv = moveSelect(sess, sh);
+  return `<div data-drag="${sess.id}" data-p="${sh.id}">${mv ? `<div class="mvrow">${row}${mv}</div>` : row}</div>`;
 }
 
 /* ---------------------------------------------------------- run the line */
@@ -1044,6 +1047,62 @@ document.addEventListener('change', e => {
 });
 
 /* ------------------------------------------------------------ click events */
+/* --- hold a shooter and drag to change the line order */
+const DRAG = { item: null, timer: null, x: 0, y: 0, grabDy: 0, justEnded: 0 };
+function dragPoint(e) { const t = e.touches ? e.touches[0] || e.changedTouches[0] : e; return { x: t.clientX, y: t.clientY }; }
+function dragStart(e) {
+  if (e.button > 0) return;
+  const item = e.target.closest('[data-drag]');
+  if (!item || e.target.closest('select, input, .ib')) return;
+  const pt = dragPoint(e);
+  DRAG.x = pt.x; DRAG.y = pt.y; clearTimeout(DRAG.timer);
+  const begin = () => {
+    DRAG.item = item; item.classList.add('dragging'); item.parentElement.classList.add('sorting');
+    DRAG.grabDy = DRAG.y - item.getBoundingClientRect().top;
+    try { navigator.vibrate && navigator.vibrate(15); } catch (err) {}
+  };
+  if (e.target.closest('.grip')) begin(); else DRAG.timer = setTimeout(begin, 350);
+}
+function dragMove(e) {
+  const pt = dragPoint(e);
+  if (!DRAG.item) {
+    if (DRAG.timer && (Math.abs(pt.x - DRAG.x) > 8 || Math.abs(pt.y - DRAG.y) > 8)) { clearTimeout(DRAG.timer); DRAG.timer = null; }
+    return;
+  }
+  if (e.cancelable) e.preventDefault();
+  DRAG.y = pt.y;
+  const it = DRAG.item;
+  const place = () => { it.style.transform = ''; const top = it.getBoundingClientRect().top; it.style.transform = `translateY(${pt.y - DRAG.grabDy - top}px)`; };
+  place();
+  const prev = it.previousElementSibling, next = it.nextElementSibling;
+  const mid = el => { const r = el.getBoundingClientRect(); return r.top + r.height / 2; };
+  if (prev && pt.y < mid(prev)) { it.parentElement.insertBefore(it, prev); place(); }
+  else if (next && pt.y > mid(next)) { it.parentElement.insertBefore(next, it); place(); }
+  if (pt.y < 90) window.scrollBy(0, -14); else if (pt.y > innerHeight - 90) window.scrollBy(0, 14);
+}
+function dragEnd() {
+  clearTimeout(DRAG.timer); DRAG.timer = null;
+  const it = DRAG.item; if (!it) return;
+  DRAG.item = null; DRAG.justEnded = Date.now();
+  it.classList.remove('dragging'); it.style.transform = ''; it.parentElement.classList.remove('sorting');
+  const sess = sessById(it.dataset.drag); if (!sess) return;
+  const order = [...it.parentElement.querySelectorAll(':scope > [data-drag]')].map(x => x.dataset.p);
+  const before = sess.shooters.map(x => x.id).join();
+  sess.shooters.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+  if (sess.shooters.map(x => x.id).join() !== before) { save(); toast('Line order saved'); }
+  keepScroll(render);
+}
+document.addEventListener('touchstart', dragStart, { passive: true });
+document.addEventListener('touchmove', dragMove, { passive: false });
+document.addEventListener('touchend', dragEnd);
+document.addEventListener('touchcancel', dragEnd);
+document.addEventListener('mousedown', e => { if (!('ontouchstart' in window)) dragStart(e); });
+document.addEventListener('mousemove', e => { if (!('ontouchstart' in window)) dragMove(e); });
+document.addEventListener('mouseup', () => { if (!('ontouchstart' in window)) dragEnd(); });
+document.addEventListener('contextmenu', e => { if (e.target.closest('[data-drag]')) e.preventDefault(); });
+// A drag shouldn't also count as a tap that opens the shooter.
+document.addEventListener('click', e => { if (Date.now() - DRAG.justEnded < 400) { e.stopPropagation(); e.preventDefault(); } }, true);
+
 document.addEventListener('click', async e => {
   const b = e.target.closest('[data-act]'); if (!b || b.disabled) return;
   const a = b.dataset.act;
