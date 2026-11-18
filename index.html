@@ -211,6 +211,12 @@ textarea.in-t{min-height:70px;resize:vertical}
 .tchip.on .dot{background:#5fe08f;box-shadow:0 0 0 3px rgba(95,224,143,.2)}
 .tchip svg{width:18px;height:18px}
 .tchip[hidden]{display:none}
+.lockbar{display:flex;align-items:center;gap:10px;margin-top:12px;padding:12px 14px;border-radius:14px;background:rgba(95,224,143,.08);border:1px solid rgba(95,224,143,.35)}
+.lockbar.open{background:rgba(242,184,75,.08);border-color:rgba(242,184,75,.45)}
+.lockbar .grow b{display:block}
+.locked .pm button,.locked [data-act=done],.locked [data-act=undone],.locked [data-act=showPen]{opacity:.3;pointer-events:none}
+.tin[readonly]{opacity:.75;border-style:dashed}
+.lk{font-size:13px;margin-right:4px}
 .tchip.tstart{background:#c11f2a;border-color:#c11f2a;color:#fff;margin-right:6px}
 .tin.tgt{border-color:var(--warn)!important;box-shadow:0 0 0 3px rgba(242,184,75,.28)}
 .tin.live{color:var(--warn)}
@@ -251,7 +257,7 @@ body.kiosk .bar{display:none}
    Hit factor = (possible points − deductions) ÷ total time of all strings
    ===================================================================== */
 
-const VERSION = '1.7.0';
+const VERSION = '1.8.0';
 const LS = 'modScore.v1';
 const CWC = 'CWC Safety Team Qualifications';
 const BRG = 'BRG Standards';
@@ -433,6 +439,7 @@ function moveShooter(from, sh, to) {
 
 function render() {
   const p = parts();
+  if (location.hash !== lockRoute) { lockRoute = location.hash; UNLOCKED.clear(); }
   $('#sum').hidden = true; $('#app').classList.remove('has-sum');
   document.body.classList.toggle('kiosk', p[0] === 's' && p[2] === 'signin');
   let out;
@@ -591,7 +598,7 @@ function shooterRow(sess, sh, r, movable) {
     : `<span class="pill wait num">${r.timed}/${sh.times.length} times</span><div class="small dim" style="margin-top:4px">${r.scored}/${r.stops} scored</div>`;
   const synced = r.complete && sh.synced === sig(sess, sh);
   const row = `<button class="li" data-act="nav" data-to="#/s/${sess.id}/p/${sh.id}"><div class="av">${esc(initials(sh.name))}</div>
-    <div class="main"><b>${esc(sh.name)}</b><small>${esc(sh.email || 'No email')}${synced ? ' · synced' : ''}</small></div>
+    <div class="main"><b>${isLocked(sess, sh) ? '<span class="lk">🔒</span>' : ''}${esc(sh.name)}</b><small>${esc(sh.email || 'No email')}${synced ? ' · synced' : ''}</small></div>
     <div class="side">${status}</div></button>`;
   if (!movable) return row;
   const mv = moveSelect(sess, sh);
@@ -612,10 +619,10 @@ function lineView(sess) {
       (same ? `<b>${esc(descs[0].desc)}</b><div class="small muted" style="margin-top:4px">${esc(descs[0].dist)} yd · ${plural(Number(descs[0].rounds), 'round')} each</div>`
         : descs.map((x, k) => `<div style="margin-top:6px"><b>S${blk[k] + 1}: ${esc(x.desc)}</b><div class="small muted">${esc(x.dist)} yd · ${plural(Number(x.rounds), 'round')}</div></div>`).join(''))
     : `<div class="small muted">String ${blk[0] + 1} of ${c.strings.length} · ${esc(descs[0].dist)} yd · ${plural(Number(descs[0].rounds), 'round')}</div><b>${esc(descs[0].desc)}</b>`;
-  const box = (sh, k) => `<input class="tin ${sh.times[k] > 0 ? 'ok' : ''}" data-time data-s="${sess.id}" data-p="${sh.id}" data-i="${k}" inputmode="decimal" enterkeyhint="next" autocomplete="off" placeholder="—" value="${sh.times[k] > 0 ? sh.times[k].toFixed(2) : ''}">`;
+  const box = (sh, k) => `<input class="tin ${sh.times[k] > 0 ? 'ok' : ''}" data-time data-s="${sess.id}" data-p="${sh.id}" data-i="${k}" inputmode="decimal" enterkeyhint="next" autocomplete="off" placeholder="—" value="${sh.times[k] > 0 ? sh.times[k].toFixed(2) : ''}" ${isLocked(sess, sh) ? 'readonly' : ''}>`;
   return `<div class="chips">${blocks.map((b, k) => { const e = b[b.length - 1]; return `<button class="chip ${k === bi ? 'on' : ''} ${c.strings[e].stop || e === c.strings.length - 1 ? 'stop' : ''}" data-act="lineStr" data-s="${sess.id}" data-i="${b[0]}">${blockLabel(b)}</button>`; }).join('')}</div>
   <div class="strCard">${head}</div>
-  <div class="list">${sess.shooters.map(sh => `<div class="str"><button class="av aim" data-act="aim" data-s="${sess.id}" data-p="${sh.id}" data-i="${blk.find(k => !(sh.times[k] > 0)) ?? blk[0]}" aria-label="Send next timer string here">${esc(initials(sh.name))}</button><div class="d"><b style="font-size:16px">${esc(sh.name)}</b>${blk.map(k => `<span class="${blk.length > 1 ? 'wl' : ''}" data-lbl="S${k + 1}" id="w-${sh.id}-${k}">${shotWarn(sh, k, c.strings[k].rounds)}</span>`).join('')}</div>
+  <div class="list">${sess.shooters.map(sh => `<div class="str">${isLocked(sess, sh) ? `<button class="av" data-act="unlockSh" data-s="${sess.id}" data-p="${sh.id}" aria-label="${esc(sh.name)} is locked. Tap to unlock">🔒</button>` : `<button class="av aim" data-act="aim" data-s="${sess.id}" data-p="${sh.id}" data-i="${blk.find(k => !(sh.times[k] > 0)) ?? blk[0]}" aria-label="Send next timer string here">${esc(initials(sh.name))}</button>`}<div class="d"><b style="font-size:16px">${esc(sh.name)}</b>${blk.map(k => `<span class="${blk.length > 1 ? 'wl' : ''}" data-lbl="S${k + 1}" id="w-${sh.id}-${k}">${shotWarn(sh, k, c.strings[k].rounds)}</span>`).join('')}</div>
     ${blk.length > 1 ? `<div class="tins">${blk.map(k => `<div><label>S${k + 1}</label>${box(sh, k)}</div>`).join('')}</div>` : box(sh, blk[0])}</div>`).join('')}</div>
   ${(c.strings[last].stop || last === c.strings.length - 1) ? `<div class="card" style="margin-top:12px;border-color:rgba(242,184,75,.5)"><b style="color:var(--warn)">Scoring stop ${gi + 1}</b><div class="small muted" style="margin:4px 0 10px">Go score the targets for strings ${groups[gi][0] + 1}–${groups[gi][groups[gi].length - 1] + 1}.</div>
     <button class="btn blue" data-act="scoreStop" data-s="${sess.id}" data-g="${gi}">Score stop ${gi + 1}</button></div>` : ''}
@@ -628,15 +635,18 @@ function vShooter(sess, sh) {
   const c = sess.course, groups = stopsOf(c), k = deduct(c);
   shape(c, sh);
   const idx = sess.shooters.indexOf(sh);
-  let body = `<div class="row" style="margin-top:14px"><div class="grow small muted">${esc(sh.email || 'No email — results won’t be emailed')}</div>
+  const locked = isLocked(sess, sh), opened = !locked && UNLOCKED.has(sh.id) && calc(c, sh).complete;
+  let body = locked ? `<div class="lockbar"><div class="grow"><b>🔒 Locked</b><span class="small muted">Complete and scored. Times and scores can’t change by accident.</span></div><button class="btn sm" data-act="unlockSh" data-s="${sess.id}" data-p="${sh.id}">Unlock to edit</button></div>`
+    : opened ? `<div class="lockbar open"><div class="grow"><b>🔓 Unlocked</b><span class="small muted">Make your changes. It locks again when you leave this screen.</span></div><button class="btn sm" data-act="lockSh" data-s="${sess.id}" data-p="${sh.id}">Lock</button></div>` : '';
+  body += `<div class="row" style="margin-top:14px"><div class="grow small muted">${esc(sh.email || 'No email — results won’t be emailed')}</div>
     <button class="btn sm" data-act="editShooter" data-s="${sess.id}" data-p="${sh.id}">Edit</button></div>`;
   groups.forEach((g, gi) => {
     const st = sh.stops[gi], rds = roundsIn(c, g), hits = st.c + st.d + st.m, poss = rds * c.a;
     body += `<div class="stopHead"><b>Stop ${gi + 1} · Strings ${g[0] + 1}–${g[g.length - 1] + 1}</b><span class="small dim num">${rds} rds · ${poss} pts</span></div>
-    <div class="list">${g.map(i => { const s = c.strings[i]; return `<div class="str"><button class="n aim" data-act="aim" data-s="${sess.id}" data-p="${sh.id}" data-i="${i}" aria-label="Send next timer string here">${i + 1}</button>
+    <div class="list">${g.map(i => { const s = c.strings[i]; return `<div class="str"><button class="n aim" data-act="aim" data-s="${sess.id}" data-p="${sh.id}" data-i="${i}" aria-label="Send next timer string here" ${locked ? 'disabled' : ''}>${i + 1}</button>
       <div class="d">${esc(s.desc)}<small>${esc(s.dist)} yd · ${plural(Number(s.rounds), 'round')}</small><span id="w-${sh.id}-${i}">${shotWarn(sh, i, s.rounds)}</span></div>
-      <input class="tin ${sh.times[i] > 0 ? 'ok' : ''}" data-time data-s="${sess.id}" data-p="${sh.id}" data-i="${i}" inputmode="decimal" enterkeyhint="next" autocomplete="off" placeholder="—" value="${sh.times[i] > 0 ? sh.times[i].toFixed(2) : ''}"></div>`; }).join('')}</div>
-    <div class="card score ${st.done ? 'done' : ''}" id="stop${gi}" style="margin-top:10px">
+      <input class="tin ${sh.times[i] > 0 ? 'ok' : ''}" data-time data-s="${sess.id}" data-p="${sh.id}" data-i="${i}" inputmode="decimal" enterkeyhint="next" autocomplete="off" placeholder="—" value="${sh.times[i] > 0 ? sh.times[i].toFixed(2) : ''}" ${locked ? 'readonly' : ''}></div>`; }).join('')}</div>
+    <div class="card score ${st.done ? 'done' : ''} ${locked ? 'locked' : ''}" id="stop${gi}" style="margin-top:10px">
       <div class="top"><b>Score targets</b>${st.done ? `<span class="pill pass num">${poss - stopLost(c, st)} / ${poss}</span>` : `<span class="pill warn">NOT SCORED</span>`}</div>
       <div class="ctrs">${ctr('c', 'C', k.c, st.c, hits >= rds, sess, sh, gi)}${ctr('d', 'D', k.d, st.d, hits >= rds, sess, sh, gi)}${ctr('m', 'M', k.m, st.m, hits >= rds, sess, sh, gi)}</div>
       ${(st.ns || st.proc || st.showPen) ? `<div class="ctrs pen">${ctr('ns', 'No-shoot', k.ns, st.ns, false, sess, sh, gi)}${ctr('proc', 'Procedural', k.proc, st.proc, false, sess, sh, gi)}</div>`
@@ -1004,7 +1014,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 function findSh(el) { const sess = sessById(el.dataset.s); return { sess, sh: sess && sess.shooters.find(x => x.id === el.dataset.p) }; }
 document.addEventListener('input', e => {
   const el = e.target;
-  if (el.matches('[data-time]')) {
+  if (el.matches('[data-time]') && !el.readOnly) {
     const { sess, sh } = findSh(el); if (!sh) return;
     const v = parseFloat(String(el.value).replace(',', '.'));
     sh.times[+el.dataset.i] = v > 0 ? Math.round(v * 100) / 100 : null;
@@ -1049,6 +1059,12 @@ document.addEventListener('change', e => {
 });
 
 /* ------------------------------------------------------------ click events */
+/* --- lock: a shooter with every time and every scoring stop done is locked, so nothing
+   changes by accident. Unlock asks first and lasts until you leave that screen. */
+const UNLOCKED = new Set();
+let lockRoute = '';
+const isLocked = (sess, sh) => !UNLOCKED.has(sh.id) && calc(sess.course, sh).complete;
+
 /* --- hold a shooter and drag to change the line order */
 const DRAG = { item: null, timer: null, x: 0, y: 0, grabDy: 0, justEnded: 0 };
 function dragPoint(e) { const t = e.touches ? e.touches[0] || e.changedTouches[0] : e; return { x: t.clientX, y: t.clientY }; }
@@ -1111,6 +1127,7 @@ document.addEventListener('click', async e => {
   const sess = b.dataset.s ? sessById(b.dataset.s) : null;
   const sh = sess && b.dataset.p ? sess.shooters.find(x => x.id === b.dataset.p) : null;
 
+  if (sh && ['cnt', 'done', 'undone', 'showPen', 'aim'].includes(a) && isLocked(sess, sh)) { toast(`${sh.name} is locked. Tap Unlock to edit.`); return; }
   switch (a) {
     case 'nav': if (b.dataset.to) { if (!b.dataset.to.includes('/p/')) lastStop = null; closeModal(); go(b.dataset.to); } break;
     case 'closeModal': closeModal(); break;
@@ -1121,6 +1138,8 @@ document.addEventListener('click', async e => {
     case 'timerPull': timerPull(); break;
     case 'timerStart': timerStart(); break;
     case 'copyApp': try { await navigator.clipboard.writeText(location.href.split('#')[0]); toast('App link copied'); } catch (x) { toast('Could not copy'); } break;
+    case 'unlockSh': if (confirm(`Unlock ${sh.name} to change times or scores?`)) { UNLOCKED.add(sh.id); keepScroll(render); toast(`${sh.name} unlocked`); } break;
+    case 'lockSh': UNLOCKED.delete(sh.id); keepScroll(render); break;
     case 'aim': T.manual = { s: b.dataset.s, p: b.dataset.p, i: +b.dataset.i }; closeLock(); showTarget(); toast(T.on ? 'Next string from the timer goes here' : 'Connect the timer first'); break;
     case 'loadRoster': {
       b.disabled = true; const ok = await loadRoster(); b.disabled = false;
@@ -1372,6 +1391,7 @@ function closeLock() {
 }
 function writeTime(tg, t, shots) {
   const sess = sessById(tg.s); const sh = sess && sess.shooters.find(x => x.id === tg.p); if (!sh) return;
+  if (isLocked(sess, sh)) { toast(`${sh.name} is locked. That time wasn’t saved.`); return; }
   shape(sess.course, sh);
   sh.times[tg.i] = t;
   sh.shots = sh.shots || []; sh.shots[tg.i] = shots;
