@@ -210,6 +210,8 @@ textarea.in-t{min-height:70px;resize:vertical}
 .tchip .dot{width:9px;height:9px;border-radius:50%;background:var(--red2)}
 .tchip.on .dot{background:#5fe08f;box-shadow:0 0 0 3px rgba(95,224,143,.2)}
 .tchip svg{width:18px;height:18px}
+.tchip[hidden]{display:none}
+.tchip.tstart{background:#c11f2a;border-color:#c11f2a;color:#fff;margin-right:6px}
 .tin.tgt{border-color:var(--warn)!important;box-shadow:0 0 0 3px rgba(242,184,75,.28)}
 .tin.live{color:var(--warn)}
 .aim{border:0;cursor:pointer}
@@ -249,7 +251,7 @@ body.kiosk .bar{display:none}
    Hit factor = (possible points − deductions) ÷ total time of all strings
    ===================================================================== */
 
-const VERSION = '1.6.1';
+const VERSION = '1.7.0';
 const LS = 'modScore.v1';
 const CWC = 'CWC Safety Team Qualifications';
 const BRG = 'BRG Standards';
@@ -1117,6 +1119,7 @@ document.addEventListener('click', async e => {
     case 'timerAll': await timerConnect(true); break;
     case 'timerOff': timerDisconnect(); break;
     case 'timerPull': timerPull(); break;
+    case 'timerStart': timerStart(); break;
     case 'copyApp': try { await navigator.clipboard.writeText(location.href.split('#')[0]); toast('App link copied'); } catch (x) { toast('Could not copy'); } break;
     case 'aim': T.manual = { s: b.dataset.s, p: b.dataset.p, i: +b.dataset.i }; closeLock(); showTarget(); toast(T.on ? 'Next string from the timer goes here' : 'Connect the timer first'); break;
     case 'loadRoster': {
@@ -1237,9 +1240,10 @@ function shotWarn(sh, i, rounds) {
   return n != null && n !== Number(rounds) ? `<span class="pill warn shotw">Timer heard ${n} of ${rounds} shots</span>` : '';
 }
 function timerChip() {
-  return `<button class="tchip ${T.on ? 'on' : ''}" id="tchip" data-act="timer" aria-label="Shot timer"><span class="dot"></span><span id="tchipv">${T.on && T.last != null ? T.last.toFixed(2) : 'Timer'}</span></button>`;
+  return `<button class="tchip tstart" id="tstart" data-act="timerStart" ${T.on ? '' : 'hidden'} aria-label="Start the timer">▶ Start</button><button class="tchip ${T.on ? 'on' : ''}" id="tchip" data-act="timer" aria-label="Shot timer"><span class="dot"></span><span id="tchipv">${T.on && T.last != null ? T.last.toFixed(2) : 'Timer'}</span></button>`;
 }
 function refreshTimerUI() {
+  const ts = $('#tstart'); if (ts) ts.hidden = !T.on;
   const c = $('#tchip'); if (c) { c.classList.toggle('on', T.on); $('#tchipv').textContent = T.on && T.last != null ? T.last.toFixed(2) : 'Timer'; }
   const big = $('#tbig'); if (big) big.textContent = T.last != null ? T.last.toFixed(2) : '0.00';
   const sub = $('#tsub'); if (sub) sub.textContent = `${plural(T.shots, 'shot')}` + (T.split != null && T.shots > 1 ? ` · split ${T.split.toFixed(2)}` : '');
@@ -1284,6 +1288,15 @@ async function onTimerDrop() {
   toast('Lost the timer. Tap Timer to reconnect.');
 }
 function timerDisconnect() { T.off = true; try { T.dev && T.dev.gatt.disconnect(); } catch (e) { /* ignore */ } T.on = false; refreshTimerUI(); showTarget(); timerModal(); }
+// "COM START" = same as pressing Start on the timer: it runs its own delay, beeps and starts listening.
+let startBusy = 0;
+async function timerStart() {
+  if (!T.on || !T.rx) { toast('Connect the timer first'); return; }
+  if (Date.now() - startBusy < 1500) return;
+  startBusy = Date.now();
+  try { await T.rx.writeValue(new TextEncoder().encode('COM START')); toast('Start sent. Wait for the beep.'); }
+  catch (e) { toast('The timer didn’t accept Start. Press Start on the timer.'); }
+}
 async function timerPull() {
   if (!T.on || !T.rx) { toast('Connect the timer first'); return; }
   T.wantDump = true;
@@ -1407,7 +1420,8 @@ function timerModal() {
     <div class="tbig" id="tbig">${T.last != null ? T.last.toFixed(2) : '0.00'}</div>
     <div class="small muted" style="text-align:center" id="tsub">${plural(T.shots, 'shot')}</div>
     <div class="card small muted" style="margin-top:14px">Each string's last-shot time goes into the gold box, then the gold box moves on. Tap a string number or a shooter's initials to aim the next string somewhere else. You can always type over a time.</div>
-    <div class="two" style="margin-top:12px"><button class="btn" data-act="timerPull">Pull last string</button><button class="btn ghost danger" data-act="timerOff">Disconnect</button></div>
+    <div style="margin-top:12px"><button class="btn primary" data-act="timerStart">▶ Start the timer</button></div>
+    <div class="two" style="margin-top:10px"><button class="btn" data-act="timerPull">Pull last string</button><button class="btn ghost danger" data-act="timerOff">Disconnect</button></div>
     <div style="margin-top:8px"><button class="btn blue" data-act="closeModal">Done</button></div>`);
 }
 
