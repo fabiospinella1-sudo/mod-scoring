@@ -133,6 +133,16 @@ select.mv.wide{width:100%;margin:6px 0 0;padding:12px;font-size:15px}
 .ctr.c .lab{color:#ffd78a} .ctr.d .lab{color:#ffb27a} .ctr.m .lab{color:var(--red2)}
 .ctrs.pen{grid-template-columns:repeat(2,1fr);margin-top:8px}
 .linkbtn{color:var(--blue2);font-weight:700;font-size:14px;padding:8px 2px}
+.erow{display:flex;align-items:center;gap:10px;padding:10px 12px;min-height:64px;border-bottom:1px solid var(--line)}
+.erow:last-child{border-bottom:0}
+.erow .main{flex:1;min-width:0}
+.erow .main b{display:block;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.erow .main small{display:block;color:var(--muted);font-size:12px}
+.erow .pos{width:22px;text-align:center;font-weight:800;color:var(--dim);flex:none}
+.ib{flex:none;width:44px;height:44px;border-radius:12px;background:var(--card2);border:1px solid var(--line);color:var(--text);font-size:18px;font-weight:800;display:grid;place-items:center}
+.ib:disabled{opacity:.3}
+.ib.danger{color:#ff8a8f;border-color:rgba(212,36,47,.5)}
+.listhead{display:flex;align-items:center;justify-content:space-between;margin:2px 2px 6px}
 
 /* sticky summary */
 .sum{position:fixed;left:0;right:0;bottom:0;z-index:15;background:rgba(13,27,64,.97);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid var(--line);padding:10px 12px calc(10px + var(--safeb))}
@@ -235,7 +245,7 @@ body.kiosk .bar{display:none}
    Hit factor = (possible points − deductions) ÷ total time of all strings
    ===================================================================== */
 
-const VERSION = '1.5.1';
+const VERSION = '1.6.0';
 const LS = 'modScore.v1';
 const CWC = 'CWC Safety Team Qualifications';
 const BRG = 'BRG Standards';
@@ -557,8 +567,15 @@ function vSession(sess, tab) {
         : `New sign-ups for this course go to ${first ? prettyDate(first.date) : 'the soonest one'} first. Use <b>Move</b> to shift people here.`}</div>
         <button class="linkbtn" data-act="loadRoster">Refresh</button></div>`;
     }
-    body += sess.shooters.length ? `<div class="list">${res.map(x => shooterRow(sess, x.sh, x.r, true)).join('')}</div>`
-      : `<div class="card empty">No shooters yet.</div>`;
+    const editing = listEdit === sess.id;
+    if (sess.shooters.length) body += `<div class="listhead"><div class="small muted">${plural(sess.shooters.length, 'shooter')} · line order${editing ? ': use ▲ ▼ to move, ✕ to remove' : ''}</div>
+      <button class="linkbtn" data-act="listEdit" data-s="${sess.id}">${editing ? 'Done' : 'Reorder / remove'}</button></div>`;
+    body += !sess.shooters.length ? `<div class="card empty">No shooters yet.</div>`
+      : editing ? `<div class="list">${sess.shooters.map((sh, i) => `<div class="erow"><div class="pos">${i + 1}</div><div class="main"><b>${esc(sh.name)}</b><small>${esc(sh.email || 'No email')}</small></div>
+          <button class="ib" data-act="shMove" data-d="-1" data-s="${sess.id}" data-p="${sh.id}" ${i === 0 ? 'disabled' : ''} aria-label="Move ${esc(sh.name)} up">▲</button>
+          <button class="ib" data-act="shMove" data-d="1" data-s="${sess.id}" data-p="${sh.id}" ${i === sess.shooters.length - 1 ? 'disabled' : ''} aria-label="Move ${esc(sh.name)} down">▼</button>
+          <button class="ib danger" data-act="shDel" data-s="${sess.id}" data-p="${sh.id}" aria-label="Remove ${esc(sh.name)}">✕</button></div>`).join('')}</div>`
+      : `<div class="list">${res.map(x => shooterRow(sess, x.sh, x.r, true)).join('')}</div>`;
     body += `<div class="two" style="margin-top:12px"><button class="btn" data-act="addShooter" data-s="${sess.id}">+ Add shooter</button><button class="btn" data-act="nav" data-to="#/s/${sess.id}/signin">Sign-in screen</button></div>`;
     const pend = pendingIn(sess).length;
     if (pend) body += `<div style="margin-top:10px"><button class="btn primary" data-act="sync">Sync ${plural(pend, 'result')}</button></div>`;
@@ -790,6 +807,7 @@ function readHand() {
 
 /* --- add shooter in a session */
 let addPicked = {};
+let listEdit = null; // id of the qualification whose shooter list is in reorder/remove mode
 function addShooterModal(sess) {
   const have = new Set(sess.shooters.map(s => s.name.toLowerCase()));
   const avail = S.roster.filter(r => !have.has(r.name.toLowerCase()));
@@ -1079,6 +1097,17 @@ document.addEventListener('click', async e => {
     case 'addHand': { const into = sess || sessById($('#sheet').dataset.s || parts()[1]); const p = readHand(); if (p && into) { addShooters(into, [p]); closeModal(); render(); toast('Added ' + p.name); } break; }
     case 'editShooter': editShooterModal(sess, sh); break;
     case 'saveShooter': { const n = $('#eName').value.trim(); if (!n) { toast('Name can’t be blank'); break; } sh.name = n; sh.email = $('#eEmail').value.trim(); save(); closeModal(); render(); break; }
+    case 'listEdit': listEdit = listEdit === sess.id ? null : sess.id; keepScroll(render); break;
+    case 'shMove': {
+      const i = sess.shooters.indexOf(sh), j = i + Number(b.dataset.d);
+      if (i < 0 || j < 0 || j >= sess.shooters.length) break;
+      sess.shooters.splice(i, 1); sess.shooters.splice(j, 0, sh); save(); keepScroll(render); break;
+    }
+    case 'shDel': {
+      const r = calc(sess.course, sh);
+      if (!confirm(r.timed || r.scored ? `Remove ${sh.name}? Their times and scores for this qualification will be deleted.` : `Remove ${sh.name} from this qualification?`)) break;
+      sess.shooters.splice(sess.shooters.indexOf(sh), 1); save(); keepScroll(render); toast(`Removed ${sh.name}`); break;
+    }
     case 'delShooter': if (confirm(`Remove ${sh.name} and their scores?`)) { sess.shooters.splice(sess.shooters.indexOf(sh), 1); save(); closeModal(); go('#/s/' + sess.id); } break;
 
     case 'cnt': {
