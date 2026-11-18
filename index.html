@@ -235,7 +235,7 @@ body.kiosk .bar{display:none}
    Hit factor = (possible points − deductions) ÷ total time of all strings
    ===================================================================== */
 
-const VERSION = '1.5.0';
+const VERSION = '1.5.1';
 const LS = 'modScore.v1';
 const CWC = 'CWC Safety Team Qualifications';
 const BRG = 'BRG Standards';
@@ -1076,7 +1076,7 @@ document.addEventListener('click', async e => {
       if (!people.length) { toast('Tick at least one name'); break; }
       addShooters(sess, people); closeModal(); render(); toast(`Added ${plural(people.length, 'shooter')}`); break;
     }
-    case 'addHand': { const p = readHand(); if (p) { addShooters(sess, [p]); closeModal(); render(); toast('Added ' + p.name); } break; }
+    case 'addHand': { const into = sess || sessById($('#sheet').dataset.s || parts()[1]); const p = readHand(); if (p && into) { addShooters(into, [p]); closeModal(); render(); toast('Added ' + p.name); } break; }
     case 'editShooter': editShooterModal(sess, sh); break;
     case 'saveShooter': { const n = $('#eName').value.trim(); if (!n) { toast('Name can’t be blank'); break; } sh.name = n; sh.email = $('#eEmail').value.trim(); save(); closeModal(); render(); break; }
     case 'delShooter': if (confirm(`Remove ${sh.name} and their scores?`)) { sess.shooters.splice(sess.shooters.indexOf(sh), 1); save(); closeModal(); go('#/s/' + sess.id); } break;
