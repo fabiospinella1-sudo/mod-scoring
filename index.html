@@ -218,6 +218,8 @@ textarea.in-t{min-height:70px;resize:vertical}
 .tin[readonly]{opacity:.75;border-style:dashed}
 .lk{font-size:13px;margin-right:4px}
 .tchip.tstart{background:#c11f2a;border-color:#c11f2a;color:#fff;margin-right:6px}
+.tchip.tstart.sent{background:#1f7a46;border-color:#1f7a46}
+.toast{pointer-events:none}
 .tin.tgt{border-color:var(--warn)!important;box-shadow:0 0 0 3px rgba(242,184,75,.28)}
 .tin.live{color:var(--warn)}
 .aim{border:0;cursor:pointer}
@@ -257,7 +259,7 @@ body.kiosk .bar{display:none}
    Hit factor = (possible points − deductions) ÷ total time of all strings
    ===================================================================== */
 
-const VERSION = '1.8.0';
+const VERSION = '1.8.1';
 const LS = 'modScore.v1';
 const CWC = 'CWC Safety Team Qualifications';
 const BRG = 'BRG Standards';
@@ -439,7 +441,11 @@ function moveShooter(from, sh, to) {
 
 function render() {
   const p = parts();
-  if (location.hash !== lockRoute) { lockRoute = location.hash; UNLOCKED.clear(); }
+  if (location.hash !== lockRoute) {
+    lockRoute = location.hash; UNLOCKED.clear(); FRESH.clear();
+    const cur = p[0] === 's' && sessById(p[1]);
+    if (cur) cur.shooters.forEach(x => { if (!calc(cur.course, x).complete) { UNLOCKED.add(x.id); FRESH.add(x.id); } });
+  }
   $('#sum').hidden = true; $('#app').classList.remove('has-sum');
   document.body.classList.toggle('kiosk', p[0] === 's' && p[2] === 'signin');
   let out;
@@ -637,7 +643,7 @@ function vShooter(sess, sh) {
   const idx = sess.shooters.indexOf(sh);
   const locked = isLocked(sess, sh), opened = !locked && UNLOCKED.has(sh.id) && calc(c, sh).complete;
   let body = locked ? `<div class="lockbar"><div class="grow"><b>🔒 Locked</b><span class="small muted">Complete and scored. Times and scores can’t change by accident.</span></div><button class="btn sm" data-act="unlockSh" data-s="${sess.id}" data-p="${sh.id}">Unlock to edit</button></div>`
-    : opened ? `<div class="lockbar open"><div class="grow"><b>🔓 Unlocked</b><span class="small muted">Make your changes. It locks again when you leave this screen.</span></div><button class="btn sm" data-act="lockSh" data-s="${sess.id}" data-p="${sh.id}">Lock</button></div>` : '';
+    : opened ? `<div class="lockbar open"><div class="grow"><b>${FRESH.has(sh.id) ? '✓ Complete' : '🔓 Unlocked'}</b><span class="small muted">${FRESH.has(sh.id) ? 'You can still adjust scores here. It locks when you leave this screen.' : 'Make your changes. It locks again when you leave this screen.'}</span></div><button class="btn sm" data-act="lockSh" data-s="${sess.id}" data-p="${sh.id}">Lock</button></div>` : '';
   body += `<div class="row" style="margin-top:14px"><div class="grow small muted">${esc(sh.email || 'No email — results won’t be emailed')}</div>
     <button class="btn sm" data-act="editShooter" data-s="${sess.id}" data-p="${sh.id}">Edit</button></div>`;
   groups.forEach((g, gi) => {
@@ -1061,7 +1067,7 @@ document.addEventListener('change', e => {
 /* ------------------------------------------------------------ click events */
 /* --- lock: a shooter with every time and every scoring stop done is locked, so nothing
    changes by accident. Unlock asks first and lasts until you leave that screen. */
-const UNLOCKED = new Set();
+const UNLOCKED = new Set(), FRESH = new Set(); // FRESH: weren't complete when you opened this screen
 let lockRoute = '';
 const isLocked = (sess, sh) => !UNLOCKED.has(sh.id) && calc(sess.course, sh).complete;
 
@@ -1139,7 +1145,7 @@ document.addEventListener('click', async e => {
     case 'timerStart': timerStart(); break;
     case 'copyApp': try { await navigator.clipboard.writeText(location.href.split('#')[0]); toast('App link copied'); } catch (x) { toast('Could not copy'); } break;
     case 'unlockSh': if (confirm(`Unlock ${sh.name} to change times or scores?`)) { UNLOCKED.add(sh.id); keepScroll(render); toast(`${sh.name} unlocked`); } break;
-    case 'lockSh': UNLOCKED.delete(sh.id); keepScroll(render); break;
+    case 'lockSh': UNLOCKED.delete(sh.id); FRESH.delete(sh.id); keepScroll(render); break;
     case 'aim': T.manual = { s: b.dataset.s, p: b.dataset.p, i: +b.dataset.i }; closeLock(); showTarget(); toast(T.on ? 'Next string from the timer goes here' : 'Connect the timer first'); break;
     case 'loadRoster': {
       b.disabled = true; const ok = await loadRoster(); b.disabled = false;
@@ -1313,7 +1319,10 @@ async function timerStart() {
   if (!T.on || !T.rx) { toast('Connect the timer first'); return; }
   if (Date.now() - startBusy < 1500) return;
   startBusy = Date.now();
-  try { await T.rx.writeValue(new TextEncoder().encode('COM START')); toast('Start sent. Wait for the beep.'); }
+  try {
+    await T.rx.writeValue(new TextEncoder().encode('COM START'));
+    const btn = $('#tstart'); if (btn) { btn.classList.add('sent'); btn.textContent = '● Beep…'; setTimeout(() => { const b2 = $('#tstart'); if (b2) { b2.classList.remove('sent'); b2.textContent = '▶ Start'; } }, 2500); }
+  }
   catch (e) { toast('The timer didn’t accept Start. Press Start on the timer.'); }
 }
 async function timerPull() {
